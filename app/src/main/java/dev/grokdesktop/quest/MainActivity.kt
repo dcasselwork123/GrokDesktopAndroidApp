@@ -8,6 +8,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -101,7 +103,10 @@ class MainActivity : AppCompatActivity() {
         settings.allowFileAccess = false
         settings.setSupportMultipleWindows(false)
         webView.setBackgroundColor(ContextCompat.getColor(this, R.color.grok_bg))
-        webView.addJavascriptInterface(GrokJsBridge(::completeBridge, ::openAuthTab), "GrokAndroid")
+        webView.addJavascriptInterface(
+            GrokJsBridge(::completeBridge, ::openAuthTab, ::copyTextToClipboard),
+            "GrokAndroid",
+        )
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                 val msg = consoleMessage ?: return true
@@ -298,6 +303,13 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    private fun copyTextToClipboard(text: String): Boolean {
+        if (text.isBlank()) return false
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("Grok sign-in", text))
+        return true
+    }
+
     private fun isAllowedPanelUrl(uri: Uri): Boolean {
         if (uri.scheme == "file" && (uri.path ?: "").startsWith("/android_asset")) return true
         val host = uri.host ?: return false
@@ -334,6 +346,7 @@ class MainActivity : AppCompatActivity() {
     },
     getApiInfo: () => Promise.resolve({ url: location.origin, port: Number(location.port) }),
     openExternal: (url) => call("openExternal", { url: url || "" }),
+    copyText: (text) => call("copyText", { text: text || "" }),
     pickFolder: (defaultPath) => call("pickFolder", { defaultPath: defaultPath || "" }),
     setTheme: (pref) => call("setTheme", { pref: pref }),
     openSidechat: (payload) => call("openSidechat", payload || {}),

@@ -9,7 +9,7 @@ diff --git a/renderer/app.js b/renderer/app.js
  
    function isLoopbackPage() {
      const host = String(location.hostname || "").toLowerCase();
-@@ -327,6 +328,40 @@
+@@ -327,6 +328,74 @@
      return !!(window.grokDesktop && window.grokDesktop.isElectron);
    }
  
@@ -34,6 +34,40 @@ diff --git a/renderer/app.js b/renderer/app.js
 +        .catch(() => false);
 +    }
 +    return Promise.resolve(false);
++  }
++
++  function copyQuestText(text) {
++    const t = String(text || "");
++    if (!t) return Promise.resolve(false);
++    if (window.grokDesktop && typeof window.grokDesktop.copyText === "function") {
++      return Promise.resolve(window.grokDesktop.copyText(t))
++        .then(() => true)
++        .catch(() => false);
++    }
++    if (navigator.clipboard && navigator.clipboard.writeText) {
++      return navigator.clipboard.writeText(t).then(() => true).catch(() => false);
++    }
++    return Promise.resolve(false);
++  }
++
++  function questSignInDetailsHtml({ userCode, url, emailHint, extraHtml }) {
++    const signInUrl = url || "https://grok.com/device";
++    let html = "";
++    if (userCode) {
++      html +=
++        `<div style="font-size:32px;font-weight:700;letter-spacing:0.14em;font-family:var(--mono);margin:10px 0 8px">${escapeHtml(
++          userCode
++        )}</div>`;
++    }
++    html +=
++      `<div style="margin-top:8px">` +
++      `<div style="opacity:0.85;margin-bottom:6px">Paste this URL in a browser on your phone or PC:</div>` +
++      `<input id="quest-signin-url" type="text" readonly value="${escapeHtml(signInUrl)}" ` +
++      `style="width:100%;box-sizing:border-box;font-family:var(--mono);font-size:13px;padding:8px 10px;border-radius:8px" />` +
++      `</div>`;
++    if (emailHint) html += `<div style="margin-top:8px">${escapeHtml(emailHint)}</div>`;
++    if (extraHtml) html += extraHtml;
++    return html;
 +  }
 +
 +  function maybeAutoOpenDeviceUrl(login) {
@@ -299,7 +333,7 @@ diff --git a/renderer/app.js b/renderer/app.js
      if (login.running) {
        const method = login.method || state.loginMethod;
        const methodHint =
-@@ -7250,6 +7299,114 @@
+@@ -7250,6 +7299,131 @@
      setStatus(false, "Sign in required");
    }
  
@@ -314,14 +348,27 @@ diff --git a/renderer/app.js b/renderer/app.js
 +      login.exitCode !== null &&
 +      !setup.auth?.valid;
 +
++    const signInUrl = url || "https://grok.com/device";
 +    const actions = [];
 +    if (login.running) {
-+      if (url) {
++      if (userCode) {
 +        actions.push({
-+          label: "Open sign-in",
++          label: "Open in browser",
 +          primary: true,
 +          id: "btn-setup-open-signin",
-+          onClick: () => openQuestExternal(url),
++          onClick: () => openQuestExternal(signInUrl),
++        });
++        actions.push({
++          label: "Copy URL",
++          primary: false,
++          id: "btn-setup-copy-url",
++          onClick: () => copyQuestText(signInUrl),
++        });
++        actions.push({
++          label: "Copy code",
++          primary: false,
++          id: "btn-setup-copy-code",
++          onClick: () => copyQuestText(userCode),
 +        });
 +      } else {
 +        actions.push({ label: "Signing in…", primary: true, disabled: true });
@@ -345,19 +392,12 @@ diff --git a/renderer/app.js b/renderer/app.js
 +        },
 +      });
 +      if (userCode) {
-+        maybeAutoOpenDeviceUrl(login);
++        maybeAutoOpenDeviceUrl({ ...login, device: { url: signInUrl, userCode } });
 +        setSetupChrome({
 +          title: "Sign in to Grok",
 +          message: "Enter this code on the sign-in page, then return here.",
-+          detailsHtml:
-+            `<div style="font-size:32px;font-weight:700;letter-spacing:0.14em;font-family:var(--mono);margin:10px 0 8px">${escapeHtml(
-+              userCode
-+            )}</div>` +
-+            (url
-+              ? `<div style="margin-top:6px;word-break:break-all">${escapeHtml(url)}</div>`
-+              : "") +
-+            `<div style="margin-top:8px">${escapeHtml(emailHint)}</div>`,
-+          hint: "X vs email is chosen on grok.com. This headset uses grok login --device-auth.",
++          detailsHtml: questSignInDetailsHtml({ userCode, url: signInUrl, emailHint }),
++          hint: "Copy the URL into a phone/PC browser if Quest Browser does not open.",
 +          actions,
 +        });
 +      } else {
@@ -378,28 +418,39 @@ diff --git a/renderer/app.js b/renderer/app.js
 +      return;
 +    }
 +
++    const failTail = String(login.logTail || login.error || tail || "").slice(-1200);
 +    setSetupChrome({
 +      title: failed ? "Sign-in didn’t finish" : "Sign in to Grok",
 +      message: failed
 +        ? "Device-code sign-in didn’t finish. Try again."
 +        : "Sign in with a device code. X or email is chosen on grok.com.",
 +      detailsHtml:
-+        `<div>${escapeHtml(emailHint)}</div>` +
-+        (failed && login.error
-+          ? `<div style="margin-top:6px;color:var(--danger)">${escapeHtml(login.error)}</div>`
-+          : "") +
-+        (!userCode && tail
++        (failed
++          ? ""
++          : questSignInDetailsHtml({
++              userCode: null,
++              url: "https://grok.com/device",
++              emailHint,
++            })) +
++        (failed && failTail
 +          ? `<pre style="text-align:left;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow:auto;margin:10px 0 0;font-size:11px">${escapeHtml(
-+              tail
++              failTail
 +            )}</pre>`
 +          : ""),
-+      hint: "Starts grok login --device-auth. Open the URL in Quest Browser when prompted.",
++      hint: failed
++        ? "If you see a DNS error, the headset CLI cannot resolve auth.x.ai."
++        : "Sign in, then copy the URL into any browser if the headset does not open one.",
 +      actions: [
 +        {
-+          label: "Sign in",
++          label: failed ? "Try again" : "Sign in",
 +          primary: true,
 +          id: "btn-setup-login-device",
 +          onClick: () => startSignIn({ method: "device" }),
++        },
++        {
++          label: "Copy URL",
++          primary: false,
++          onClick: () => copyQuestText("https://grok.com/device"),
 +        },
 +        {
 +          label: "Recheck",

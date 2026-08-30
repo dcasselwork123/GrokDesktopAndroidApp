@@ -12,12 +12,26 @@ function isShortUserCode(s) {
   return /^[A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8})?$/i.test(t);
 }
 
+function isDeviceAuthPageUrl(href) {
+  const t = String(href || "").trim();
+  if (!/^https:\/\//i.test(t)) return false;
+  const lower = t.toLowerCase();
+  // Token endpoint in error text is not a sign-in page.
+  if (lower.includes("/oauth2/device/code") || lower.includes("/oauth2/token")) return false;
+  return (
+    lower.includes("://grok.com/") ||
+    lower.includes("://www.grok.com/") ||
+    lower.includes("://accounts.x.ai/oauth2/device")
+  );
+}
+
 function parseDeviceAuth(text) {
   const raw = String(text || "");
   let url = null;
   const urlMatch = raw.match(/https:\/\/[^\s"'<>\\]+/i);
   if (urlMatch) {
-    url = urlMatch[0].replace(/[.,;:!?)\]>]+$/g, "");
+    const cand = urlMatch[0].replace(/[.,;:!?)\]>]+$/g, "");
+    if (isDeviceAuthPageUrl(cand)) url = cand;
   }
 
   let userCode = null;
@@ -34,6 +48,7 @@ function parseDeviceAuth(text) {
     }
   }
   if (!url && !userCode) return null;
+  if (userCode && !url) url = "https://grok.com/device";
   return { url: url || null, userCode: userCode || null };
 }
 
@@ -70,6 +85,19 @@ if (require.main === module) {
     "token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbb\n"
   );
   assert.ok(!jwtOnly || !jwtOnly.userCode, "must not treat JWT as userCode");
+
+  const dnsErr = parseDeviceAuth(
+    "Error: error sending request for url (https://auth.x.ai/oauth2/device/code): dns error: Try again\n"
+  );
+  assert.strictEqual(dnsErr, null, "must not treat the token endpoint as a sign-in URL");
+
+  const accounts = parseDeviceAuth(
+    "To sign in, open this URL in your browser:\n\n  https://accounts.x.ai/oauth2/device?user_code=ABCD-EFGH\n\nConfirm this code:\n\n  ABCD-EFGH\n"
+  );
+  assert.deepStrictEqual(accounts, {
+    url: "https://accounts.x.ai/oauth2/device?user_code=ABCD-EFGH",
+    userCode: "ABCD-EFGH",
+  });
 
   const applied = path.join(
     __dirname,

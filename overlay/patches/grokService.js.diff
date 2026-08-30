@@ -1,7 +1,7 @@
 diff --git a/server/grokService.js b/server/grokService.js
 --- a/server/grokService.js
 +++ b/server/grokService.js
-@@ -238,16 +238,94 @@ const loginState = {
+@@ -238,16 +238,108 @@ const loginState = {
    error: null,
    log: "",
    method: null,
@@ -15,13 +15,26 @@ diff --git a/server/grokService.js b/server/grokService.js
 +  return /^[A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8})?$/i.test(t);
 +}
 +
++function isDeviceAuthPageUrl(href) {
++  const t = String(href || "").trim();
++  if (!/^https:\/\//i.test(t)) return false;
++  const lower = t.toLowerCase();
++  if (lower.includes("/oauth2/device/code") || lower.includes("/oauth2/token")) return false;
++  return (
++    lower.includes("://grok.com/") ||
++    lower.includes("://www.grok.com/") ||
++    lower.includes("://accounts.x.ai/oauth2/device")
++  );
++}
++
 +/** Keep in sync with overlay/fixtures/parse-device-auth.js */
 +function parseDeviceAuth(text) {
 +  const raw = String(text || "");
 +  let url = null;
 +  const urlMatch = raw.match(/https:\/\/[^\s"'<>\\]+/i);
 +  if (urlMatch) {
-+    url = urlMatch[0].replace(/[.,;:!?)\]>]+$/g, "");
++    const cand = urlMatch[0].replace(/[.,;:!?)\]>]+$/g, "");
++    if (isDeviceAuthPageUrl(cand)) url = cand;
 +  }
 +
 +  let userCode = null;
@@ -38,6 +51,7 @@ diff --git a/server/grokService.js b/server/grokService.js
 +    }
 +  }
 +  if (!url && !userCode) return null;
++  if (userCode && !url) url = "https://grok.com/device";
 +  return { url: url || null, userCode: userCode || null };
 +}
 +
@@ -98,7 +112,7 @@ diff --git a/server/grokService.js b/server/grokService.js
      running: loginState.running,
      pid: loginState.pid,
      startedAt: loginState.startedAt,
-@@ -258,7 +336,12 @@ function getLoginStatus() {
+@@ -258,7 +347,12 @@ function getLoginStatus() {
      // Last lines only — may contain a URL; never tokens from auth.json
      logTail: loginState.log ? loginState.log.slice(-1200) : "",
      method: loginState.method,
@@ -111,7 +125,7 @@ diff --git a/server/grokService.js b/server/grokService.js
  }
  
  /**
-@@ -293,8 +376,10 @@ function startGrokLogin({ oauth = true, method = null } = {}) {
+@@ -293,8 +387,10 @@ function startGrokLogin({ oauth = true, method = null } = {}) {
    loginState.error = null;
    loginState.log = "";
    loginState.method = method === "email" ? "email" : "x";
@@ -123,7 +137,7 @@ diff --git a/server/grokService.js b/server/grokService.js
  
    try {
      loginChild = spawn(bin, args, {
-@@ -314,9 +399,22 @@ function startGrokLogin({ oauth = true, method = null } = {}) {
+@@ -314,9 +410,22 @@ function startGrokLogin({ oauth = true, method = null } = {}) {
    }
  
    loginState.pid = loginChild.pid || null;
@@ -149,7 +163,7 @@ diff --git a/server/grokService.js b/server/grokService.js
  
    loginChild.on("error", (err) => {
      loginState.error = err.message || String(err);
-@@ -1190,6 +1288,7 @@ function runPrompt({
+@@ -1190,6 +1299,7 @@ function runPrompt({
        );
        args.push("--debug-file", debugFile);
      }
@@ -157,7 +171,7 @@ diff --git a/server/grokService.js b/server/grokService.js
      return args;
    }
  
-@@ -2041,6 +2140,7 @@ module.exports = {
+@@ -2041,6 +2151,7 @@ module.exports = {
    cancelGrokLogin,
    logoutGrok,
    getLoginStatus,

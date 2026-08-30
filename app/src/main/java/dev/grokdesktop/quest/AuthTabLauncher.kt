@@ -23,18 +23,25 @@ object AuthTabLauncher {
     fun open(context: Context, url: String): Boolean {
         if (!isSafeExternalUrl(url)) return false
         val uri = Uri.parse(url.trim())
+        val view = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // Custom Tabs often no-op on Quest. Prefer the system/Quest browser.
+        for (pkg in arrayOf("com.oculus.browser", "com.android.chrome")) {
+            try {
+                context.startActivity(Intent(view).setPackage(pkg))
+                return true
+            } catch (_: Exception) {
+            }
+        }
+        try {
+            context.startActivity(view)
+            return true
+        } catch (_: Exception) {
+        }
         return try {
             CustomTabsIntent.Builder().build().launchUrl(context, uri)
             true
         } catch (_: Exception) {
-            try {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-                true
-            } catch (_: Exception) {
-                false
-            }
+            false
         }
     }
 }

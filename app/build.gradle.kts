@@ -11,8 +11,8 @@ android {
         applicationId = "dev.grokdesktop.quest"
         minSdk = 32
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0-spike"
+        versionCode = 2
+        versionName = "0.1.1-quest"
         ndk {
             abiFilters.clear()
             abiFilters += "arm64-v8a"
@@ -43,6 +43,9 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            // Termux/NDK PIE executables: AGP llvm-strip corrupts DT_HASH and
+            // Quest's API 32 linker then fails with "new hash type from the future".
+            keepDebugSymbols += "**/*.so"
         }
     }
 

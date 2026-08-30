@@ -6,6 +6,7 @@ import org.json.JSONObject
 class GrokJsBridge(
     private val complete: (id: String, err: String?, value: Any?) -> Unit,
     private val openExternalUrl: (url: String) -> Boolean,
+    private val copyTextToClipboard: (text: String) -> Boolean,
 ) {
     @JavascriptInterface
     fun pickFolder(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
@@ -25,6 +26,21 @@ class GrokJsBridge(
             false
         }
         if (ok) complete(id, null, true) else complete(id, "blocked url", false)
+    }
+
+    @JavascriptInterface
+    fun copyText(id: String, argsJson: String) {
+        val text = try {
+            JSONObject(argsJson).optString("text", "")
+        } catch (_: Exception) {
+            ""
+        }
+        val ok = try {
+            copyTextToClipboard(text)
+        } catch (_: Exception) {
+            false
+        }
+        if (ok) complete(id, null, true) else complete(id, "copy failed", false)
     }
 
     @JavascriptInterface

@@ -158,13 +158,21 @@ unpack_termux() {
   find "${root}" -name '*.so*' -type f | while read -r so; do
     cp -f "${so}" "${JNI_DIR}/$(basename "${so}")"
   done
-  need_cmd patchelf
+  # Debian bookworm patchelf 0.14 does not rewrite VERNEED; API 32 then fails:
+  # cannot find "libcrypto.so" from verneed[0] in DT_NEEDED list
+  local PATCHELF="${CACHE_DIR}/patchelf-0.18.0/bin/patchelf"
+  if [[ ! -x "${PATCHELF}" ]]; then
+    curl -L --fail --retry 3 -o "${CACHE_DIR}/patchelf-0.18.0.tgz" \
+      https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.gz
+    mkdir -p "${CACHE_DIR}/patchelf-0.18.0"
+    tar -xzf "${CACHE_DIR}/patchelf-0.18.0.tgz" -C "${CACHE_DIR}/patchelf-0.18.0" --strip-components=1
+  fi
   local f
   for f in "${JNI_DIR}"/libnode.so "${JNI_DIR}"/*.so*; do
     [[ -f "${f}" ]] || continue
-    patchelf --set-rpath '$ORIGIN' "${f}" 2>/dev/null || true
+    "${PATCHELF}" --set-rpath '$ORIGIN' "${f}" 2>/dev/null || true
   done
-  # AGP only packages files named *.so (not libssl.so.3). Flatten SONAMEs.
+  # AGP only packages files named *.so (not libssl.so.3). Flatten SONAMEs + VERNEED.
   flatten_soname() {
     local needed="$1"
     local dest="$2"
@@ -177,11 +185,12 @@ unpack_termux() {
     if [[ "$(basename "${src}")" != "${dest}" ]]; then
       cp -f "${src}" "${JNI_DIR}/${dest}"
     fi
-    patchelf --set-rpath '$ORIGIN' "${JNI_DIR}/${dest}" 2>/dev/null || true
-    patchelf --replace-needed "${needed}" "${dest}" "${JNI_DIR}/libnode.so" 2>/dev/null || true
+    "${PATCHELF}" --set-soname "${dest}" "${JNI_DIR}/${dest}" 2>/dev/null || true
+    "${PATCHELF}" --set-rpath '$ORIGIN' "${JNI_DIR}/${dest}" 2>/dev/null || true
+    "${PATCHELF}" --replace-needed "${needed}" "${dest}" "${JNI_DIR}/libnode.so" 2>/dev/null || true
     local other
     for other in "${JNI_DIR}"/*.so*; do
-      patchelf --replace-needed "${needed}" "${dest}" "${other}" 2>/dev/null || true
+      "${PATCHELF}" --replace-needed "${needed}" "${dest}" "${other}" 2>/dev/null || true
     done
   }
   flatten_soname libz.so.1 libz.so
@@ -219,6 +228,16 @@ if ! build_node_ndk; then
   fi
 fi
 build_nodewrap
+# Termux libc++_shared.so (LLVM 19) trips the Quest API 32 linker:
+# "empty/missing DT_HASH/DT_GNU_HASH ... (new hash type from the future?)".
+# Always vendor NDK r26c libc++ into the same slot.
+ndk_cxx="${NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
+if [[ -f "${ndk_cxx}" ]]; then
+  cp -f "${ndk_cxx}" "${JNI_DIR}/libc++_shared.so"
+  log "installed NDK r26c libc++_shared.so (replaces Termux libc++ for API 32 linker)"
+else
+  echo "WARNING: NDK libc++_shared.so not found at ${ndk_cxx}" >&2
+fi
 if [[ ! -f "${JNI_DIR}/libnode.so" ]]; then
   echo "FATAL: libnode.so was not produced" >&2
   exit 1

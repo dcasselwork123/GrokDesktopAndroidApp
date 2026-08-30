@@ -67,13 +67,13 @@ Package: `dev.grokdesktop.quest`. `minSdk 32`, `targetSdk 34`.
 | **1** Feasibility spike (Node exec, grok exec, W^X, FGS, `SPIKE.md`) | **Done** on `main`. Host ELF PASS. Device rows need Quest 3 + `adb`. |
 | **2** 2D panel + specialUse FGS + WebView shell | **Done** on `main`. |
 | **3** Vendor JS + `questEntry.js` loopback + workspace cwd | **Done** on `main`. |
-| **4** Device-code login + account bubble | **Done** on `main`. Fixture is redacted sample until a Quest is on `adb`. |
+| **4** Device-code login + account bubble | **Done** on `main`. On-device: musl grok DNS fails; `questEntry.js` CONNECT proxy unblocks `--device-auth`. |
 | **5** Chat SSE + sessions + ACP + toybox shell checklist | **Done** on `main`. On-device `uname; ls; wget` row is **PENDING** until a Quest is on `adb`. |
 | 6–10 | Not started. Spec is `DESIGN.md` § PR Plan. |
 
 **Node artifact in this APK:** Termux **nodejs-lts 24.18.0** PIE + `/system/bin/linker64` (not JNI). NDK r26c Node v22.14.0 remains the documented primary recipe; host-tool flags blocked the link (see `SPIKE.md`). Node ≥ 21 is required (global `WebSocket`).
 
-**Grok artifact:** official musl `linux-aarch64` as `libgrok.so`. If on-device DNS to `api.x.ai` fails, same slot via `$env:GROK_BIONIC=1` — no `/sdcard` resolv patch.
+**Grok artifact:** official musl `linux-aarch64` as `libgrok.so`. Quest has no `/etc/resolv.conf`, so musl `getaddrinfo` fails. `overlay/server/questEntry.js` starts a loopback HTTP CONNECT proxy and sets `HTTPS_PROXY` so grok uses Node/bionic DNS. `$env:GROK_BIONIC=1` is still the gated cargo path (same APK slot) — no `/sdcard` resolv patch.
 
 ---
 

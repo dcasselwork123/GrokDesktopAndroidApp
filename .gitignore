@@ -14,7 +14,9 @@ captures/
 
 # Native binaries (run scripts/fetch-runtime.ps1 before assemble)
 app/src/main/jniLibs/**/*.so
+app/src/main/jniLibs/**/*.so.*
 app/src/main/jniLibs/**/*.origin.txt
+.tmp-device/
 app/src/main/assets/grok-desktop/
 vendor/
 overlay-out/
