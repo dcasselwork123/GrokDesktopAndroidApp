@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Grok Desktop</string>
+    <string name="notif_channel_id">grok-runtime</string>
+    <string name="notif_channel_name">Grok runtime</string>
+    <string name="notif_starting">Starting…</string>
+    <string name="btn_start">Start runtime</string>
+    <string name="btn_stop">Stop runtime</string>
+    <string name="btn_copy">Copy results</string>
+    <string name="btn_wx">Re-run W^X test</string>
+    <string name="perm_notifications_required">Notification permission is required to keep the Grok runtime alive as a foreground service. Grant POST_NOTIFICATIONS, then tap Start runtime.</string>
+</resources>
