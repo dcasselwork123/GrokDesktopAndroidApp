@@ -21,4 +21,6 @@
     <string name="folder_picker_copying_n">Copied %d files…</string>
     <string name="folder_picker_cap">Import is limited to 5000 files or 2 GB. Partial copy was deleted.</string>
     <string name="folder_picker_import_failed">Could not import that folder.</string>
+    <string name="share_chooser">Share</string>
+    <string name="share_failed">Could not share that file.</string>
 </resources>

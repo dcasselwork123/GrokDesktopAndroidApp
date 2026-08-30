@@ -70,7 +70,8 @@ Package: `dev.grokdesktop.quest`. `minSdk 32`, `targetSdk 34`.
 | **4** Device-code login + account bubble | **Done** on `main`. On-device: musl grok DNS fails; `questEntry.js` CONNECT proxy unblocks `--device-auth`. |
 | **5** Chat SSE + sessions + ACP + toybox shell checklist | **Done** on `main`. On-device `uname; ls; wget` row is **PENDING** until a Quest is on `adb`. |
 | **6** Folder picker, SAF snapshot, Full/Safer, first-seen | **Done** on `main`. POSIX picker + one-shot SAF copy (5000 files / 2 GB). |
-| 7–10 | Not started. Spec is `DESIGN.md` § PR Plan. |
+| **7** Image attach/media + export share-sheet | **Done** on `main`. `onShowFileChooser` (max 8) + `DownloadListener` / `/export` share sheet. |
+| 8–10 | Not started. Spec is `DESIGN.md` § PR Plan. |
 
 **Node artifact in this APK:** Termux **nodejs-lts 24.18.0** PIE + `/system/bin/linker64` (not JNI). NDK r26c Node v22.14.0 remains the documented primary recipe; host-tool flags blocked the link (see `SPIKE.md`). Node ≥ 21 is required (global `WebSocket`).
 

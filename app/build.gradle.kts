@@ -11,8 +11,8 @@ android {
         applicationId = "dev.grokdesktop.quest"
         minSdk = 32
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.1.2-quest"
+        versionCode = 4
+        versionName = "0.1.3-quest"
         ndk {
             abiFilters.clear()
             abiFilters += "arm64-v8a"

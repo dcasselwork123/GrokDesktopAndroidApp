@@ -18,12 +18,16 @@ import android.util.Log
 import android.view.View
 import android.graphics.Bitmap
 import android.webkit.ConsoleMessage
+import android.webkit.URLUtil
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import android.widget.Button
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree
 import androidx.appcompat.app.AppCompatActivity
@@ -77,8 +81,16 @@ class MainActivity : AppCompatActivity() {
     ) { /* priming only; mic denial does not block the runtime */ }
 
     private lateinit var folderPicker: FolderPicker
+    private val fileChooser: PanelFileChooser = PanelFileChooser { intent ->
+        fileChooserLaunch.launch(intent)
+    }
     private val safTree = registerForActivityResult(OpenDocumentTree()) { uri ->
         folderPicker.onSafTree(uri)
+    }
+    private val fileChooserLaunch: ActivityResultLauncher<Intent> = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        fileChooser.onActivityResult(result)
     }
 
     private val statusReceiver = object : BroadcastReceiver() {
@@ -111,7 +123,13 @@ class MainActivity : AppCompatActivity() {
         webView.setBackgroundColor(ContextCompat.getColor(this, R.color.grok_bg))
         folderPicker = FolderPicker(this, RuntimePaths(this), { safTree.launch(null) })
         webView.addJavascriptInterface(
-            GrokJsBridge(::completeBridge, ::openAuthTab, ::copyTextToClipboard, ::openFolderPicker),
+            GrokJsBridge(
+                ::completeBridge,
+                ::openAuthTab,
+                ::copyTextToClipboard,
+                ::openFolderPicker,
+                ::shareFileFromBridge,
+            ),
             "GrokAndroid",
         )
         webView.webChromeClient = object : WebChromeClient() {
@@ -120,6 +138,22 @@ class MainActivity : AppCompatActivity() {
                 Log.i(TAG_WEB, "${msg.message()} -- ${msg.sourceId()}:${msg.lineNumber()}")
                 return true
             }
+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?,
+            ): Boolean {
+                if (uiDead || isDestroyed || isFinishing) {
+                    filePathCallback?.onReceiveValue(null)
+                    return true
+                }
+                return fileChooser.onShowFileChooser(filePathCallback, fileChooserParams)
+            }
+        }
+        // blob: `<a download>` from /export does not hit this; overlay calls shareFile.
+        webView.setDownloadListener { url, _, contentDisposition, mimeType, _ ->
+            onWebViewDownload(url, contentDisposition, mimeType)
         }
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -195,6 +229,7 @@ class MainActivity : AppCompatActivity() {
             unregisterReceiver(statusReceiver)
         } catch (_: Exception) {
         }
+        fileChooser.cancelPending()
         io.shutdownNow()
         super.onDestroy()
     }
@@ -327,6 +362,67 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun shareFileFromBridge(id: String, argsJson: String) {
+        val payload = try {
+            JSONObject(argsJson)
+        } catch (_: Exception) {
+            completeBridge(id, "invalid share payload", false)
+            return
+        }
+        handler.post {
+            if (uiDead || isDestroyed || isFinishing) {
+                completeBridge(id, "activity gone", false)
+                return@post
+            }
+            val ok = try {
+                PanelShare.shareFromBridge(this, payload)
+            } catch (_: Exception) {
+                false
+            }
+            if (ok) completeBridge(id, null, true) else completeBridge(id, "share failed", false)
+        }
+    }
+
+    private fun onWebViewDownload(url: String?, contentDisposition: String?, mimeType: String?) {
+        if (url.isNullOrBlank() || uiDead || isDestroyed || isFinishing) return
+        if (url.startsWith("blob:")) {
+            val name = PanelShare.sanitizeFilename(
+                URLUtil.guessFileName(url, contentDisposition, mimeType),
+                "download",
+            )
+            val mime = mimeType ?: ""
+            val js =
+                "(function(){fetch(${JSONObject.quote(url)}).then(function(r){return r.blob();})" +
+                    ".then(function(b){if(b.size>${PanelShare.MAX_BRIDGE_BYTES})throw new Error('too large');" +
+                    "return new Promise(function(resolve,reject){var r=new FileReader();r.onload=function(){resolve(r.result)};" +
+                    "r.onerror=reject;r.readAsDataURL(b);});}).then(function(dataUrl){" +
+                    "GrokAndroid.shareFile('dl-'+Date.now(),JSON.stringify({filename:${JSONObject.quote(name)}," +
+                    "mimeType:${JSONObject.quote(mime)},dataUrl:dataUrl}));}).catch(function(){});})();"
+            webView.evaluateJavascript(js, null)
+            return
+        }
+        if (url.startsWith("data:")) {
+            val name = PanelShare.sanitizeFilename(
+                URLUtil.guessFileName(url, contentDisposition, mimeType),
+                "download",
+            )
+            val ok = PanelShare.shareDataUrl(this, url, name, mimeType ?: "")
+            if (!ok) Toast.makeText(this, R.string.share_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val port = boundPort
+        if (!PanelShare.isLoopbackHttp(url, port)) return
+        io.execute {
+            val downloaded = PanelShare.downloadLoopback(url, contentDisposition, mimeType, port)
+            handler.post {
+                if (uiDead || isDestroyed || isFinishing) return@post
+                val ok = downloaded != null &&
+                    PanelShare.shareBytes(this, downloaded.bytes, downloaded.filename, downloaded.mimeType)
+                if (!ok) Toast.makeText(this, R.string.share_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun isAllowedPanelUrl(uri: Uri): Boolean {
         if (uri.scheme == "file" && (uri.path ?: "").startsWith("/android_asset")) return true
         val host = uri.host ?: return false
@@ -370,6 +466,7 @@ class MainActivity : AppCompatActivity() {
     getSidechatInit: (nonce) => call("getSidechatInit", { nonce: nonce }),
     startPtt: () => call("startPtt", {}),
     stopPtt: () => call("stopPtt", {}),
+    shareFile: (payload) => call("shareFile", payload || {}),
   };
   window.__grokQuestWorkspace = $workspace;
 })();

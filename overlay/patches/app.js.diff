@@ -9,7 +9,7 @@ diff --git a/renderer/app.js b/renderer/app.js
  
    function isLoopbackPage() {
      const host = String(location.hostname || "").toLowerCase();
-@@ -327,6 +328,74 @@
+@@ -327,6 +328,84 @@
      return !!(window.grokDesktop && window.grokDesktop.isElectron);
    }
  
@@ -46,6 +46,16 @@ diff --git a/renderer/app.js b/renderer/app.js
 +    }
 +    if (navigator.clipboard && navigator.clipboard.writeText) {
 +      return navigator.clipboard.writeText(t).then(() => true).catch(() => false);
++    }
++    return Promise.resolve(false);
++  }
++
++  function shareQuestFile(payload) {
++    const p = payload || {};
++    if (window.grokDesktop && typeof window.grokDesktop.shareFile === "function") {
++      return Promise.resolve(window.grokDesktop.shareFile(p))
++        .then((ok) => !!ok)
++        .catch(() => false);
 +    }
 +    return Promise.resolve(false);
 +  }
@@ -92,7 +102,28 @@ diff --git a/renderer/app.js b/renderer/app.js
      return "";
    }
  
-@@ -4137,6 +4173,7 @@
+@@ -3917,7 +3946,19 @@
+           lines.push("");
+         }
+       }
+-      const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
++      const markdown = lines.join("\n");
++      if (isQuest()) {
++        const shared = await shareQuestFile({
++          filename: exportFilename(title),
++          mimeType: "text/markdown",
++          text: markdown,
++        });
++        if (shared) {
++          showReconnectStatus("Share transcript…", "ok");
++          return;
++        }
++      }
++      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+       const url = URL.createObjectURL(blob);
+       const a = document.createElement("a");
+       a.href = url;
+@@ -4137,6 +4180,7 @@
      let sawDone = false;
      let aborted = false;
      let deferred = false;

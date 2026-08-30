@@ -56,4 +56,6 @@ Grant `POST_NOTIFICATIONS` when prompted; the runtime FGS starts automatically. 
 
 Until Node answers `/api/health`, the WebView shows a local placeholder (Retry on failure). When the handshake port is healthy, the panel loads `http://127.0.0.1:<port>/`.
 
+Image attach uses the existing composer picker (`#file-attach`, max 8 JPEG re-encode in JS). The WebView implements `onShowFileChooser` so that `<input type="file">` opens the system picker. Generated session images/videos load from `GET /api/sessions/:id/media/…`. `/export` opens the Android share sheet (blob `<a download>` is not used on Quest).
+
 Results: `$HOME/.grok-desktop/spike-results.json` with `$HOME` = `filesDir/home`. FGS doff: start the panel, take the headset off ≥ 60s, confirm the Node pid in `node.pid` is still alive. See `SPIKE.md`.

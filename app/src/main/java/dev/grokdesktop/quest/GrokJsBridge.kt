@@ -8,6 +8,7 @@ class GrokJsBridge(
     private val openExternalUrl: (url: String) -> Boolean,
     private val copyTextToClipboard: (text: String) -> Boolean,
     private val openFolderPicker: (id: String) -> Unit,
+    private val shareFilePayload: (id: String, argsJson: String) -> Unit,
 ) {
     @JavascriptInterface
     fun pickFolder(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
@@ -42,6 +43,11 @@ class GrokJsBridge(
             false
         }
         if (ok) complete(id, null, true) else complete(id, "copy failed", false)
+    }
+
+    @JavascriptInterface
+    fun shareFile(id: String, argsJson: String) {
+        shareFilePayload(id, argsJson)
     }
 
     @JavascriptInterface

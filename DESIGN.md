@@ -994,7 +994,7 @@ Spike-first. DNS/TLS/SHELL are not deferred until chat.
 - **Files:** `FolderPicker.kt`, `GrokJsBridge.pickFolder` callback protocol
 - **Description:** POSIX project dirs. SAF **one-shot copy** (5000 files / 2 GB, no write-back). Full/Safer. First-seen warning. Folder change → new draft.
 
-### PR 7 — Image attach/media + export share-sheet
+### PR 7 — Image attach/media + export share-sheet **(implemented)**
 
 - **Depends on:** PR 5
 - **Files:** `onShowFileChooser`, `DownloadListener`
