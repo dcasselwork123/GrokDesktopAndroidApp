@@ -17,14 +17,15 @@ Desktop UI/server source of truth is **`E:\Dev\GrokDesktop`**. Copy it with `scr
 | **Design spec** | `DESIGN.md` (implement it; do not re-review it unless asked) |
 | **Spike results** | `SPIKE.md` |
 
-**Push policy:** After a **decent-sized** change, commit (if needed) and `git push` to `origin/main` without waiting to be asked. After a **small** change, commit locally if that makes sense, then **ask** before pushing.
+**Push policy:** This repo has **no GitHub PR workflow.** Implement on `main`, commit, and `git push origin main`. Do not open pull requests. Do not leave `execute-plan/*` (or other) branches on GitHub — those yellow “Compare & pull request” banners are leftover stacks, not something the user should click.
 
-| Push now | Ask first |
-|----------|-----------|
-| New feature, user-visible behavior, or multi-file bugfix | Typos, copy tweaks, one-liner / few-line fixes, docs-only, or “not sure this is done” |
-| The user said “push this” / “push to GitHub” | Anything that rewrites history (`--force`) |
+| Do this | Do not |
+|---------|--------|
+| Commit on `main` and push `origin/main` after a change that is done | Create GitHub PRs, Graphite stacks, or `execute-plan/<id>-pr-N-…` branches as the delivery |
+| If `/execute-plan` was used: fast-forward `main` to the finished work, push `origin/main`, **delete** the stack branches locally and on `origin` | Leave compare-URL branches sitting on the repo |
+| Stop and say so if push is blocked | `--force` / history rewrite |
 
-Never force-push. Never commit secrets (`auth.json`, API keys, `config.json`). Never commit `*.so` / APKs (`fetch-runtime.ps1` produces them). If push is blocked, say so and stop.
+Never force-push. Never commit secrets (`auth.json`, API keys, `config.json`). Never commit `*.so` / APKs (`fetch-runtime.ps1` produces them).
 
 ---
 
@@ -41,7 +42,7 @@ PR 1 burned a long implementer + reviewer loop (NDK compile, host ELF, three rev
 | Spike | Do **not** expand `SPIKE.md`. Device rows stay pending until a Quest is on `adb`. Do not rebuild Node from NDK unless binaries are missing and the user wants the NDK path. |
 | Scope | Implement **one PR** from `DESIGN.md` unless the user names more. Do not “also polish” later PRs. |
 
-`/execute-plan` default loops until every nit is closed. Override it:
+Prefer implementing **on `main`** (one pass + bugs-only review), then push `origin/main`. If `/execute-plan` is used anyway, pass the instructions below **and** after it finishes: fast-forward `main`, push, delete the stack branches. `/execute-plan` otherwise loops until every nit is closed and leaves GitHub branch banners:
 
 ```text
 --instructions "Reviewer: bugs only. One review round. No nits, no suggestions, no comment-wording. Approve if the PR description is met and it compiles."
@@ -63,8 +64,10 @@ Package: `dev.grokdesktop.quest`. `minSdk 32`, `targetSdk 34`.
 
 | PR | Status |
 |----|--------|
-| **1** Feasibility spike (Node exec, grok exec, W^X, FGS, `SPIKE.md`) | **Done** in this tree. Host ELF PASS. Device rows need Quest 3 + `adb`. |
-| 2–10 | Not started. Spec is `DESIGN.md` § PR Plan. |
+| **1** Feasibility spike (Node exec, grok exec, W^X, FGS, `SPIKE.md`) | **Done** on `main`. Host ELF PASS. Device rows need Quest 3 + `adb`. |
+| **2** 2D panel + specialUse FGS + WebView shell | **Done** on `main`. |
+| **3** Vendor JS + `questEntry.js` loopback + workspace cwd | **Done** on `main`. |
+| 4–10 | Not started. Spec is `DESIGN.md` § PR Plan. |
 
 **Node artifact in this APK:** Termux **nodejs-lts 24.18.0** PIE + `/system/bin/linker64` (not JNI). NDK r26c Node v22.14.0 remains the documented primary recipe; host-tool flags blocked the link (see `SPIKE.md`). Node ≥ 21 is required (global `WebSocket`).
 
@@ -97,9 +100,11 @@ GrokDesktopAndroid/
 ├── README.md
 ├── app/                         # Gradle app, Kotlin, jniLibs (*.so gitignored)
 ├── native/nodewrap.c
-├── overlay/server/questEntry.js # spike entry today; full overlay in PR 3
+├── overlay/server/questEntry.js # process entry (loopback httpApi)
+├── overlay/patches/             # in-place diffs on synced server/ + renderer/
 ├── scripts/fetch-runtime.ps1    # Docker: NDK Node recipe + Termux fallback + grok
-└── SOURCE_REV                   # written by sync-desktop.ps1 (PR 3+)
+├── scripts/sync-desktop.ps1     # copy E:\Dev\GrokDesktop then apply overlay
+└── SOURCE_REV                   # written by sync-desktop.ps1
 ```
 
 ---
@@ -111,14 +116,14 @@ Docker Desktop Linux engine is required for `fetch-runtime.ps1`. JDK 17 + Androi
 ```powershell
 cd E:\Dev\GrokDesktopAndroid
 .\scripts\fetch-runtime.ps1
+.\scripts\sync-desktop.ps1
 .\gradlew.bat :app:assembleDebug
-adb -d install -r app\build\outputs\apk\debug\app-debug.apk
-adb -d shell am start -n dev.grokdesktop.quest/.MainActivity
+.\scripts\adb-install.ps1
 ```
 
 `.so` files and APKs are gitignored. Re-run `fetch-runtime.ps1` after a clean clone.
 
-On-device spike: grant `POST_NOTIFICATIONS`, **Start runtime**. Pull `$HOME/.grok-desktop/spike-results.json` (`run-as`). FGS doff ≥ 60s is in `SPIKE.md`.
+On-device: grant `POST_NOTIFICATIONS`. The panel auto-starts the FGS. Pull `$HOME/.grok-desktop/spike-results.json` (`run-as`) if checking PR 1 rows. FGS doff ≥ 60s is in `SPIKE.md`.
 
 ---
 
