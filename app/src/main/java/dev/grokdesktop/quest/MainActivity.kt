@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
+import android.graphics.Bitmap
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -100,6 +101,7 @@ class MainActivity : AppCompatActivity() {
         settings.allowFileAccess = false
         settings.setSupportMultipleWindows(false)
         webView.setBackgroundColor(ContextCompat.getColor(this, R.color.grok_bg))
+        webView.addJavascriptInterface(GrokJsBridge(::completeBridge), "GrokAndroid")
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                 val msg = consoleMessage ?: return true
@@ -110,6 +112,12 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 return !isAllowedPanelUrl(request.url)
+            }
+
+            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                if (url != null && isLoopbackHttp(url)) {
+                    view.evaluateJavascript(grokPreloadJs(), null)
+                }
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
@@ -283,6 +291,60 @@ class MainActivity : AppCompatActivity() {
         if (host != "127.0.0.1" && host != "localhost") return false
         if (uri.scheme != "http") return false
         return boundPort > 0 && uri.port == boundPort
+    }
+
+    private fun isLoopbackHttp(url: String): Boolean {
+        return url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost")
+    }
+
+    private fun grokPreloadJs(): String {
+        val workspace = JSONObject.quote(RuntimePaths(this).workspace.absolutePath)
+        return """
+(function () {
+  const pending = new Map();
+  function call(method, args) {
+    const id = String(Date.now()) + "-" + Math.random().toString(16).slice(2);
+    return new Promise((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      GrokAndroid[method](id, JSON.stringify(args || {}));
+    });
+  }
+  window.grokDesktop = {
+    isElectron: true,
+    isQuest: true,
+    __resolve: function (id, err, value) {
+      const p = pending.get(id);
+      if (!p) return;
+      pending.delete(id);
+      if (err) p.reject(new Error(err));
+      else p.resolve(value);
+    },
+    getApiInfo: () => Promise.resolve({ url: location.origin, port: Number(location.port) }),
+    pickFolder: (defaultPath) => call("pickFolder", { defaultPath: defaultPath || "" }),
+    setTheme: (pref) => call("setTheme", { pref: pref }),
+    openSidechat: (payload) => call("openSidechat", payload || {}),
+    getSidechatInit: (nonce) => call("getSidechatInit", { nonce: nonce }),
+    startPtt: () => call("startPtt", {}),
+    stopPtt: () => call("stopPtt", {}),
+  };
+  window.__grokQuestWorkspace = $workspace;
+})();
+        """.trimIndent()
+    }
+
+    fun completeBridge(id: String, err: String?, value: Any?) {
+        val errJs = if (err == null) "null" else JSONObject.quote(err)
+        val valueJs = when (value) {
+            null -> "null"
+            is String -> JSONObject.quote(value)
+            is Number, is Boolean -> value.toString()
+            else -> JSONObject.wrap(value)?.toString() ?: "null"
+        }
+        val js = "grokDesktop.__resolve(" + JSONObject.quote(id) + ", " + errJs + ", " + valueJs + ")"
+        handler.post {
+            if (uiDead || isDestroyed || isFinishing) return@post
+            webView.evaluateJavascript(js, null)
+        }
     }
 
     private fun readPort(paths: RuntimePaths): Int {

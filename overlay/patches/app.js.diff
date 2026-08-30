@@ -1,0 +1,73 @@
+diff --git a/renderer/app.js b/renderer/app.js
+index d207ae1..005d122 100644
+--- a/renderer/app.js
++++ b/renderer/app.js
+@@ -217,6 +217,7 @@
+ 
+   if (isPhoneUi()) document.body.classList.add("phone-ui");
+   if (isElectron()) document.body.classList.add("is-electron");
++  if (isQuest() && els.btnRemote) els.btnRemote.classList.add("hidden");
+ 
+   function isLoopbackPage() {
+     const host = String(location.hostname || "").toLowerCase();
+@@ -327,6 +328,10 @@
+     return !!(window.grokDesktop && window.grokDesktop.isElectron);
+   }
+ 
++  function isQuest() {
++    return !!(window.grokDesktop && window.grokDesktop.isQuest);
++  }
++
+   // ---------- Working folder (cwd) ----------
+   function persistLastCwd(cwd) {
+     try {
+@@ -3531,6 +3536,7 @@
+   function guessDefaultCwd() {
+     // Prefer last session cwd, else leave blank (server uses process.cwd)
+     if (state.sessions[0]?.cwd) return state.sessions[0].cwd;
++    if (isQuest() && window.__grokQuestWorkspace) return window.__grokQuestWorkspace;
+     return "";
+   }
+ 
+@@ -6446,6 +6452,7 @@
+   let remoteLanSaving = false;
+ 
+   function canShowLanToggle() {
++    if (isQuest()) return false;
+     return (isElectron() || isLoopbackPage()) && !isPhoneUi();
+   }
+ 
+@@ -6519,6 +6526,7 @@
+   }
+ 
+   async function loadRemoteInfo() {
++    if (isQuest()) return null;
+     const urlEl = document.getElementById("remote-url");
+     try {
+       const info = await api("/api/remote");
+@@ -6610,6 +6618,7 @@
+   });
+ 
+   els.btnRemote.addEventListener("click", async () => {
++    if (isQuest()) return;
+     els.modalBackdrop.classList.remove("hidden");
+     await loadRemoteInfo();
+   });
+@@ -6656,7 +6665,7 @@
+   }
+ 
+   const btnRotate = document.getElementById("btn-rotate-token");
+-  if (btnRotate) {
++  if (btnRotate && !isQuest()) {
+     btnRotate.addEventListener("click", async () => {
+       if (!confirm("Existing phone tabs will need the new URL.")) return;
+       try {
+@@ -6671,7 +6680,7 @@
+   }
+ 
+   const lanCheck = document.getElementById("remote-allow-lan");
+-  if (lanCheck) {
++  if (lanCheck && !isQuest()) {
+     lanCheck.addEventListener("change", async () => {
+       const next = !!lanCheck.checked;
+       const prev = !!(lastRemoteInfo && lastRemoteInfo.allowLan);

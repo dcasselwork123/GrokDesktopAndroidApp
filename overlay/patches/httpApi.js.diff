@@ -1,0 +1,36 @@
+diff --git a/server/httpApi.js b/server/httpApi.js
+index ae86aec..8d9491e 100644
+--- a/server/httpApi.js
++++ b/server/httpApi.js
+@@ -1524,7 +1524,13 @@ async function createServer({
+         const newSession = !!body.newSession || !sessionId || !!forkFrom;
+         let model = body.model || DEFAULT_MODEL_ID;
+         let effort = body.effort || "high";
+-        let cwd = body.cwd || process.cwd();
++        const hadCwd = typeof body.cwd === "string" && body.cwd.trim();
++        let cwd = hadCwd
++          ? body.cwd
++          : getLastCwd() || process.env.GROK_QUEST_WORKSPACE || process.cwd();
++        if (!hadCwd && cwd) {
++          setLastCwd(cwd);
++        }
+         if (remoteChat) {
+           try {
+             const resolved = assertModelEffort(body.model, body.effort, loadModels());
+@@ -1791,10 +1797,12 @@ async function createServer({
+     throw err;
+   }
+ 
+-  await rebind({
+-    allowLan: currentAllowLan,
+-    tailscaleIp: currentTailscaleIp,
+-  });
++  if (!process.env.GROK_QUEST_WORKSPACE) {
++    await rebind({
++      allowLan: currentAllowLan,
++      tailscaleIp: currentTailscaleIp,
++    });
++  }
+ 
+   return {
+     servers,

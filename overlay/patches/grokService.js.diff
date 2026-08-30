@@ -1,0 +1,12 @@
+diff --git a/server/grokService.js b/server/grokService.js
+index e623d2a..37a3184 100644
+--- a/server/grokService.js
++++ b/server/grokService.js
+@@ -1190,6 +1190,7 @@ function runPrompt({
+       );
+       args.push("--debug-file", debugFile);
+     }
++    args.push("--no-auto-update");
+     return args;
+   }
+ 

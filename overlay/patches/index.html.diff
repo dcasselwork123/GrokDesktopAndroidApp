@@ -1,0 +1,13 @@
+diff --git a/renderer/index.html b/renderer/index.html
+index 8f22f81..f15b396 100644
+--- a/renderer/index.html
++++ b/renderer/index.html
+@@ -141,7 +141,7 @@
+             <span class="dot" id="status-dot"></span>
+             <span id="status-text">Connecting…</span>
+           </div>
+-          <button id="btn-remote-info" class="icon-btn" title="Remote access (iPhone)">📱</button>
++          <button id="btn-remote-info" class="icon-btn hidden" title="Remote access (iPhone)" hidden>📱</button>
+         </div>
+         <button type="button" id="btn-update" class="btn-update hidden">Update available</button>
+       </div>

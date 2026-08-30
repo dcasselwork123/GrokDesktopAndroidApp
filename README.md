@@ -13,9 +13,12 @@ Native binaries are **not** in git. Fetch them first (Docker Linux engine requir
 ```powershell
 cd E:\Dev\GrokDesktopAndroid
 .\scripts\fetch-runtime.ps1
+.\scripts\sync-desktop.ps1
 .\gradlew.bat :app:assembleDebug
 .\scripts\adb-install.ps1
 ```
+
+`sync-desktop.ps1` copies `server/` + `renderer/` from `E:\Dev\GrokDesktop` (override with `-DesktopRoot`), writes `SOURCE_REV`, and applies `overlay/patches`. Assemble fails if `httpApi.js` is missing from assets.
 
 `adb-install.ps1` runs:
 

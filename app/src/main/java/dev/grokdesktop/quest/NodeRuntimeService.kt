@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -100,7 +101,6 @@ class NodeRuntimeService : Service() {
     private fun startRuntime() {
         val paths = RuntimePaths(this)
         paths.ensureDirs()
-        extractQuestEntry(paths)
 
         if (!paths.wrap.isFile || !paths.node.isFile) {
             writeStatus(
@@ -130,6 +130,16 @@ class NodeRuntimeService : Service() {
             return
         }
         try {
+            extractAppTree(paths)
+            val httpApi = File(paths.appJs, "server/httpApi.js")
+            if (!httpApi.isFile || !paths.questEntry.isFile) {
+                writeStatus(
+                    "error",
+                    "Missing vendored JS (httpApi.js / questEntry.js). Run scripts/sync-desktop.ps1 before assemble.",
+                )
+                enterForeground("Missing JS assets")
+                return
+            }
             val pb = ProcessBuilder(
                 paths.wrap.absolutePath,
                 paths.node.absolutePath,
@@ -171,11 +181,43 @@ class NodeRuntimeService : Service() {
         }
     }
 
-    private fun extractQuestEntry(paths: RuntimePaths) {
-        val dest = paths.questEntry
-        dest.parentFile?.mkdirs()
-        assets.open("grok-desktop/server/questEntry.js").use { input ->
-            dest.outputStream().use { output -> input.copyTo(output) }
+    private fun extractAppTree(paths: RuntimePaths) {
+        val stampFile = File(paths.appJs, ".extract-stamp")
+        val sourceRev = try {
+            assets.open("grok-desktop/SOURCE_REV").bufferedReader().use { it.readText().trim() }
+        } catch (_: Exception) {
+            ""
+        }
+        val stamp = "${BuildConfig.VERSION_CODE}\n${BuildConfig.VERSION_NAME}\n$sourceRev"
+        val httpApi = File(paths.appJs, "server/httpApi.js")
+        if (
+            stampFile.isFile &&
+            stampFile.readText() == stamp &&
+            paths.questEntry.isFile &&
+            httpApi.isFile
+        ) {
+            return
+        }
+        File(paths.appJs, "server").deleteRecursively()
+        File(paths.appJs, "renderer").deleteRecursively()
+        copyAssetTree("grok-desktop", paths.appJs)
+        stampFile.parentFile?.mkdirs()
+        stampFile.writeText(stamp)
+    }
+
+    private fun copyAssetTree(assetPath: String, dest: File) {
+        val children = assets.list(assetPath)
+        if (children.isNullOrEmpty()) {
+            dest.parentFile?.mkdirs()
+            assets.open(assetPath).use { input ->
+                dest.outputStream().use { output -> input.copyTo(output) }
+            }
+            return
+        }
+        dest.mkdirs()
+        for (name in children) {
+            val childAsset = if (assetPath.isEmpty()) name else "$assetPath/$name"
+            copyAssetTree(childAsset, File(dest, name))
         }
     }
 

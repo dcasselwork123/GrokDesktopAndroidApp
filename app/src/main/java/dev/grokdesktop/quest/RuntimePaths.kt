@@ -4,7 +4,7 @@ import android.content.Context
 import org.json.JSONObject
 import java.io.File
 
-/** App-private POSIX layout used by Node ($HOME) and the spike dashboard. */
+/** App-private POSIX layout used by Node ($HOME). */
 class RuntimePaths(ctx: Context) {
     val filesDir: File = ctx.filesDir
     val nativeLibraryDir: File = File(ctx.applicationInfo.nativeLibraryDir)

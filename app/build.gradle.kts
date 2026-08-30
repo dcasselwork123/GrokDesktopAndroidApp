@@ -51,13 +51,20 @@ android {
     }
 }
 
-val syncSpikeAssets by tasks.registering(Copy::class) {
-    from(rootProject.file("overlay/server/questEntry.js"))
-    into(layout.projectDirectory.dir("src/main/assets/grok-desktop/server"))
-}
-
 tasks.named("preBuild") {
-    dependsOn(syncSpikeAssets)
+    doFirst {
+        val assetsRoot = layout.projectDirectory.dir("src/main/assets/grok-desktop")
+        val httpApi = assetsRoot.file("server/httpApi.js").asFile
+        val questEntry = assetsRoot.file("server/questEntry.js").asFile
+        val indexHtml = assetsRoot.file("renderer/index.html").asFile
+        if (!httpApi.isFile || !questEntry.isFile || !indexHtml.isFile) {
+            throw GradleException(
+                "Vendored desktop JS is missing. Run .\\scripts\\sync-desktop.ps1 before assemble " +
+                    "(copies E:\\Dev\\GrokDesktop server/ + renderer/, then overlay). " +
+                    "Expected ${httpApi.path}",
+            )
+        }
+    }
 }
 
 dependencies {
