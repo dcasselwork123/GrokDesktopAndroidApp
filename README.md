@@ -1,10 +1,12 @@
-# Grok Desktop for Quest 3 (PR 1 spike)
+# Grok Desktop for Quest 3
+
+Sideloadable **arm64-v8a** APK: a 2D floating panel. Kotlin hosts a WebView on `http://127.0.0.1:<port>/` and a `specialUse` foreground service starts standalone Node (`libnodewrap.so` → `libnode.so` → `questEntry.js`).
+
+Package: `dev.grokdesktop.quest`. Default APK is `MAIN`+`LAUNCHER` only (never `category.VR`). The debug variant also merges `com.oculus.intent.category.2D` onto that same intent-filter.
 
 This APK vendors **Termux nodejs-lts 24.18.0** (`node` renamed `libnode.so`): ET_DYN PIE with `/system/bin/linker64`. NDK r26c Node **v22.14.0** is still the primary recipe in `fetch-runtime.ps1` (attempted; host-tool flags blocked the link — see `SPIKE.md`).
 
-Package: `dev.grokdesktop.quest`. ABI: `arm64-v8a` only. No chat UI.
-
-## Build
+## Build / sideload
 
 Native binaries are **not** in git. Fetch them first (Docker Linux engine required):
 
@@ -12,9 +14,17 @@ Native binaries are **not** in git. Fetch them first (Docker Linux engine requir
 cd E:\Dev\GrokDesktopAndroid
 .\scripts\fetch-runtime.ps1
 .\gradlew.bat :app:assembleDebug
+.\scripts\adb-install.ps1
+```
+
+`adb-install.ps1` runs:
+
+```
 adb -d install -r app\build\outputs\apk\debug\app-debug.apk
 adb -d shell am start -n dev.grokdesktop.quest/.MainActivity
 ```
+
+and assembles the debug APK first if it is missing. It fails if `adb` or a USB device is missing. Updates are sideload-only — the app does not `git pull`.
 
 `fetch-runtime.ps1` (primary):
 
@@ -37,10 +47,10 @@ If NDK Node fails, the script unpacks Termux aarch64 `.deb`s from `vendor/termux
 
 Bionic grok-build (same `libgrok.so` slot) is gated: `$env:GROK_BIONIC=1`. Do not run it unless musl DNS fails on device.
 
-## On-device spike
+## Panel
 
-Dashboard buttons: Start runtime, Stop runtime, Re-run W^X, Copy results.
+Grant `POST_NOTIFICATIONS` when prompted; the runtime FGS starts automatically. Mic (`RECORD_AUDIO`) is primed the same way and does **not** gate Node. Closing the panel does not stop the FGS.
 
-Results: `$HOME/.grok-desktop/spike-results.json` with `$HOME` = `filesDir/home`. Node DNS/TLS are `checks.nodeDns` / `checks.nodeTls` — not the grok musl getaddrinfo/rustls rows.
+Until Node answers `/api/health`, the WebView shows a local placeholder (Retry on failure). When the handshake port is healthy, the panel loads `http://127.0.0.1:<port>/`.
 
-FGS doff: start runtime, take the headset off ≥ 60s, confirm the Node pid in the dashboard / `node.pid` is still alive. See `SPIKE.md`.
+Results: `$HOME/.grok-desktop/spike-results.json` with `$HOME` = `filesDir/home`. FGS doff: start the panel, take the headset off ≥ 60s, confirm the Node pid in `node.pid` is still alive. See `SPIKE.md`.

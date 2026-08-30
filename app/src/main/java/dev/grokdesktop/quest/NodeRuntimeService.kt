@@ -9,16 +9,19 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -36,17 +39,29 @@ class NodeRuntimeService : Service() {
 
     private val runtimeOps = Executors.newSingleThreadExecutor()
     private val io = Executors.newCachedThreadPool()
+    private val wakeScheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
     private val startedForeground = AtomicBoolean(false)
     private val starting = AtomicBoolean(false)
     private var nodeProcess: Process? = null
     private var nodePid: Int = -1
     @Volatile private var notificationText: String = "Starting…"
+    private var wakeLock: PowerManager.WakeLock? = null
+    @Volatile private var lastLiveAt: Long = 0
+    @Volatile private var sawLive: Boolean = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         ensureChannel()
+        // 404 / connection failure must not hold the lock; no run.lock file.
+        wakeScheduler.scheduleAtFixedRate({
+            try {
+                pollRunsForWakeLock()
+            } catch (t: Throwable) {
+                Log.w(TAG, "wake poll: ${t.message}")
+            }
+        }, 5, 5, TimeUnit.SECONDS)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -75,6 +90,8 @@ class NodeRuntimeService : Service() {
 
     override fun onDestroy() {
         stopRuntime("destroyed")
+        wakeScheduler.shutdownNow()
+        releaseWakeLock()
         runtimeOps.shutdownNow()
         io.shutdownNow()
         super.onDestroy()
@@ -257,7 +274,110 @@ class NodeRuntimeService : Service() {
         }
     }
 
+    private fun pollRunsForWakeLock() {
+        if (anyRunLive()) {
+            sawLive = true
+            lastLiveAt = System.currentTimeMillis()
+            acquireWakeLock()
+            return
+        }
+        if (sawLive && lastLiveAt > 0 && System.currentTimeMillis() - lastLiveAt >= 60_000L) {
+            releaseWakeLock()
+        }
+    }
+
+    private fun anyRunLive(): Boolean {
+        val paths = RuntimePaths(this)
+        val port = try {
+            if (!paths.runtimeJson.isFile) return false
+            JSONObject(paths.runtimeJson.readText()).optInt("port", -1)
+        } catch (_: Exception) {
+            return false
+        }
+        if (port <= 0) return false
+        return try {
+            val conn = URL("http://127.0.0.1:$port/api/runs").openConnection() as HttpURLConnection
+            conn.connectTimeout = 800
+            conn.readTimeout = 800
+            conn.requestMethod = "GET"
+            conn.instanceFollowRedirects = false
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                conn.disconnect()
+                return false
+            }
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            conn.disconnect()
+            runsIndicateLive(body)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun runsIndicateLive(body: String): Boolean {
+        val trimmed = body.trim()
+        if (trimmed.isEmpty()) return false
+        return try {
+            when {
+                trimmed.startsWith("[") -> {
+                    val arr = JSONArray(trimmed)
+                    (0 until arr.length()).any { i -> runObjLive(arr.optJSONObject(i)) }
+                }
+                trimmed.startsWith("{") -> {
+                    val obj = JSONObject(trimmed)
+                    if (obj.optBoolean("running", false) || obj.optBoolean("live", false)) return true
+                    val arr = obj.optJSONArray("runs") ?: obj.optJSONArray("items")
+                    if (arr != null) {
+                        (0 until arr.length()).any { i -> runObjLive(arr.optJSONObject(i)) }
+                    } else {
+                        runObjLive(obj)
+                    }
+                }
+                else -> false
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun runObjLive(obj: JSONObject?): Boolean {
+        if (obj == null) return false
+        if (obj.optBoolean("running", false) || obj.optBoolean("live", false) || obj.optBoolean("active", false)) {
+            return true
+        }
+        val status = obj.optString("status", obj.optString("state", "")).lowercase()
+        return status == "running" || status == "live" || status == "in_progress" ||
+            status == "streaming" || status == "active" || status == "started"
+    }
+
+    private fun acquireWakeLock() {
+        val existing = wakeLock
+        val wl = if (existing != null) {
+            existing
+        } else {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "dev.grokdesktop.quest:runs").also {
+                it.setReferenceCounted(false)
+                wakeLock = it
+            }
+        }
+        if (!wl.isHeld) {
+            @Suppress("DEPRECATION")
+            wl.acquire()
+        }
+    }
+
+    private fun releaseWakeLock() {
+        val wl = wakeLock ?: return
+        if (wl.isHeld) {
+            wl.release()
+        }
+    }
+
     private fun stopRuntime(reason: String) {
+        lastLiveAt = 0
+        sawLive = false
+        releaseWakeLock()
         val pid = nodePid
         if (pid > 0) {
             killProcessGroup(pid)

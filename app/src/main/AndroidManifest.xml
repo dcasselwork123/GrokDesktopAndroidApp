@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -31,6 +33,13 @@
             android:exported="true"
             android:resizeableActivity="true"
             android:screenOrientation="landscape">
+            <layout
+                android:defaultWidth="1280dp"
+                android:defaultHeight="840dp"
+                android:minWidth="640dp"
+                android:minHeight="400dp"
+                android:maxWidth="1440dp"
+                android:maxHeight="1000dp" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
