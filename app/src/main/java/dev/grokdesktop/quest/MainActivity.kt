@@ -18,6 +18,7 @@ import android.util.Log
 import android.view.View
 import android.graphics.Bitmap
 import android.webkit.ConsoleMessage
+import android.webkit.PermissionRequest
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -59,6 +60,9 @@ class MainActivity : AppCompatActivity() {
     private var placeholderReady = false
     private var pendingPlaceholder: JSONObject? = null
     private var micPrimed = false
+    private var micRequestInFlight = false
+    private var pendingPttStart: Pair<String, String>? = null
+    private val ptt = PttAudioRecord()
     @Volatile private var uiDead = false
 
     private val notifPermission = registerForActivityResult(
@@ -78,7 +82,15 @@ class MainActivity : AppCompatActivity() {
 
     private val micPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { /* priming only; mic denial does not block the runtime */ }
+    ) { granted ->
+        micRequestInFlight = false
+        val pending = pendingPttStart
+        pendingPttStart = null
+        if (pending != null) {
+            if (granted) beginPtt(pending.first, pending.second)
+            else completeBridge(pending.first, "microphone permission denied", false)
+        }
+    }
 
     private lateinit var folderPicker: FolderPicker
     private val fileChooser: PanelFileChooser = PanelFileChooser { intent ->
@@ -129,6 +141,8 @@ class MainActivity : AppCompatActivity() {
                 ::copyTextToClipboard,
                 ::openFolderPicker,
                 ::shareFileFromBridge,
+                ::startPttFromBridge,
+                ::stopPttFromBridge,
             ),
             "GrokAndroid",
         )
@@ -149,6 +163,20 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
                 return fileChooser.onShowFileChooser(filePathCallback, fileChooserParams)
+            }
+
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                if (request == null) return
+                val origin = request.origin
+                val resources = request.resources ?: emptyArray()
+                val loopback = origin != null && isAllowedPanelUrl(origin)
+                val micOk = hasMicPermission()
+                val wantsMic = resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                if (loopback && micOk && wantsMic) {
+                    request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+                } else {
+                    request.deny()
+                }
             }
         }
         // blob: `<a download>` from /export does not hit this; overlay calls shareFile.
@@ -219,6 +247,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         handler.removeCallbacks(refresh)
+        ptt.stop()
+        if (loadedLoopback && !uiDead) {
+            webView.evaluateJavascript(
+                "window.__grokQuestPttPaused && window.__grokQuestPttPaused()",
+                null,
+            )
+        }
         super.onStop()
     }
 
@@ -229,6 +264,7 @@ class MainActivity : AppCompatActivity() {
             unregisterReceiver(statusReceiver)
         } catch (_: Exception) {
         }
+        ptt.stop()
         fileChooser.cancelPending()
         io.shutdownNow()
         super.onDestroy()
@@ -260,16 +296,25 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.startForegroundService(this, i)
     }
 
-    private fun primeMic() {
-        if (micPrimed) return
-        micPrimed = true
-        val granted = ContextCompat.checkSelfPermission(
+    private fun hasMicPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.RECORD_AUDIO,
         ) == PackageManager.PERMISSION_GRANTED
-        if (!granted) {
-            micPermission.launch(Manifest.permission.RECORD_AUDIO)
-        }
+    }
+
+    private fun primeMic() {
+        if (micPrimed) return
+        micPrimed = true
+        if (hasMicPermission() || micRequestInFlight) return
+        micRequestInFlight = true
+        micPermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    private fun requestMicForPtt() {
+        if (micRequestInFlight) return
+        micRequestInFlight = true
+        micPermission.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     private fun refreshRuntimeBinding() {
@@ -360,6 +405,50 @@ class MainActivity : AppCompatActivity() {
             }
             folderPicker.show { path -> completeBridge(id, null, path) }
         }
+    }
+
+    private fun startPttFromBridge(id: String, argsJson: String) {
+        val sessionId = try {
+            JSONObject(argsJson).optString("sessionId", "")
+        } catch (_: Exception) {
+            ""
+        }
+        handler.post {
+            if (uiDead || isDestroyed || isFinishing) {
+                completeBridge(id, "activity gone", false)
+                return@post
+            }
+            if (!PttAudioRecord.isSafeSessionId(sessionId)) {
+                completeBridge(id, "invalid session", false)
+                return@post
+            }
+            if (boundPort <= 0) {
+                completeBridge(id, "runtime not ready", false)
+                return@post
+            }
+            if (!hasMicPermission()) {
+                pendingPttStart = id to sessionId
+                requestMicForPtt()
+                return@post
+            }
+            beginPtt(id, sessionId)
+        }
+    }
+
+    private fun stopPttFromBridge(id: String) {
+        handler.post {
+            ptt.stop()
+            completeBridge(id, null, true)
+        }
+    }
+
+    private fun beginPtt(id: String, sessionId: String) {
+        if (uiDead || isDestroyed || isFinishing) {
+            completeBridge(id, "activity gone", false)
+            return
+        }
+        val err = ptt.start(boundPort, sessionId)
+        if (err != null) completeBridge(id, err, false) else completeBridge(id, null, true)
     }
 
     private fun shareFileFromBridge(id: String, argsJson: String) {
@@ -464,7 +553,7 @@ class MainActivity : AppCompatActivity() {
     setTheme: (pref) => call("setTheme", { pref: pref }),
     openSidechat: (payload) => call("openSidechat", payload || {}),
     getSidechatInit: (nonce) => call("getSidechatInit", { nonce: nonce }),
-    startPtt: () => call("startPtt", {}),
+    startPtt: (payload) => call("startPtt", payload || {}),
     stopPtt: () => call("stopPtt", {}),
     shareFile: (payload) => call("shareFile", payload || {}),
   };

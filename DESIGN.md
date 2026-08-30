@@ -1000,7 +1000,7 @@ Spike-first. DNS/TLS/SHELL are not deferred until chat.
 - **Files:** `onShowFileChooser`, `DownloadListener`
 - **Description:** Attach max 8 JPEG. Session media GET. `/export` share sheet. (Busybox is **not** this PR.)
 
-### PR 8 — PTT voice (WebView mic + AudioRecord fallback)
+### PR 8 — PTT voice (WebView mic + AudioRecord fallback) **(implemented)**
 
 - **Depends on:** PR 2 (permission priming) + PR 5 (API) + PR 4 (auth key)
 - **Files:** `PttAudioRecord.kt`, `onPermissionRequest` grant algorithm, `startPtt`/`stopPtt` bridge

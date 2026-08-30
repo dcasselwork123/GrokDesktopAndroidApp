@@ -58,4 +58,6 @@ Until Node answers `/api/health`, the WebView shows a local placeholder (Retry o
 
 Image attach uses the existing composer picker (`#file-attach`, max 8 JPEG re-encode in JS). The WebView implements `onShowFileChooser` so that `<input type="file">` opens the system picker. Generated session images/videos load from `GET /api/sessions/:id/media/…`. `/export` opens the Android share sheet (blob `<a download>` is not used on Quest).
 
+Dictation uses the existing `#btn-mic` (click to start/stop; does not auto-send). The WebView grants `RESOURCE_AUDIO_CAPTURE` only to the loopback origin after `RECORD_AUDIO`. If `getUserMedia` fails, native `AudioRecord` (16 kHz mono PCM16, ~100 ms frames) posts to `POST /api/stt/audio`.
+
 Results: `$HOME/.grok-desktop/spike-results.json` with `$HOME` = `filesDir/home`. FGS doff: start the panel, take the headset off ≥ 60s, confirm the Node pid in `node.pid` is still alive. See `SPIKE.md`.

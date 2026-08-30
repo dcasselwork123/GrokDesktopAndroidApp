@@ -9,6 +9,8 @@ class GrokJsBridge(
     private val copyTextToClipboard: (text: String) -> Boolean,
     private val openFolderPicker: (id: String) -> Unit,
     private val shareFilePayload: (id: String, argsJson: String) -> Unit,
+    private val startPttPayload: (id: String, argsJson: String) -> Unit,
+    private val stopPttPayload: (id: String) -> Unit,
 ) {
     @JavascriptInterface
     fun pickFolder(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
@@ -71,12 +73,12 @@ class GrokJsBridge(
     }
 
     @JavascriptInterface
-    fun startPtt(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
-        complete(id, "not implemented", null)
+    fun startPtt(id: String, argsJson: String) {
+        startPttPayload(id, argsJson)
     }
 
     @JavascriptInterface
     fun stopPtt(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
-        complete(id, "not implemented", null)
+        stopPttPayload(id)
     }
 }
