@@ -112,14 +112,17 @@ diff --git a/renderer/app.js b/renderer/app.js
              if (rec.finished) {
                clearPendingReattach();
                if (turnGen === state.turnGen) {
-@@ -4662,6 +4717,14 @@
+@@ -4662,6 +4717,17 @@
  
        if (!serverWorked && age < 15000) return;
  
-+      if (isQuest() && !serverWorked) {
-+        surfaceQuestTurnDied(state.liveShell);
++      if (isQuest() && !run?.runId) {
++        const diedShell = state.liveShell;
++        surfaceQuestTurnDied(diedShell);
 +        clearPendingReattach();
 +        await finishTurn(sessionToLoad);
++        showReconnectStatus(QUEST_TURN_DIED, "warn");
++        await openSession(sessionToLoad, { forceReload: true });
 +        showReconnectStatus(QUEST_TURN_DIED, "warn");
 +        return;
 +      }
