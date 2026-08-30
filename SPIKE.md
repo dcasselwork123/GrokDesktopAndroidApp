@@ -44,8 +44,8 @@ Until those host-tool flags are fully green, this APK vendors the Termux **PIE**
 | `libgrok.so --version` from `nativeLibraryDir` | required | try bionic rebuild (B) | **PENDING (needs Quest 3 + adb)** — host `file`: musl static ET_EXEC aarch64 |
 | `ls -l /bin/sh /system/bin/sh`; `echo $SHELL` | note | set `SHELL=/system/bin/sh` | **PENDING (needs Quest 3 + adb)** — env already `SHELL=/system/bin/sh` |
 | `/etc/resolv.conf` contains a nameserver | note | expect musl DNS fail | **PENDING (needs Quest 3 + adb)** |
-| grok `getaddrinfo api.x.ai` (or `grok --version` then a tiny net probe) | primary musl OK | fallback B **bionic grok-build** (same APK `libgrok.so`). No `/sdcard` 16-byte patch | **PENDING (needs Quest 3 + adb)** |
-| TLS `https://api.x.ai` from grok (CLI bundles rustls roots — verify) | required for login/chat | report CA; do not assume Android `/apex/.../cacerts` | **PENDING (needs Quest 3 + adb)** — Node also probes `https://api.x.ai` in spike JS |
+| grok `getaddrinfo api.x.ai` (or `grok --version` then a tiny net probe) | primary musl OK | fallback B **bionic grok-build** (same APK `libgrok.so`). No `/sdcard` 16-byte patch | **PENDING (needs Quest 3 + adb).** `checks.grokDns.probed` is false (`--version`/`--help` do not call getaddrinfo). Use `/etc/resolv.conf` + later login, not Node `dns.lookup`. |
+| TLS `https://api.x.ai` from grok (CLI bundles rustls roots — verify) | required for login/chat | report CA; do not assume Android `/apex/.../cacerts` | **PENDING (needs Quest 3 + adb).** Spike JSON `checks.nodeTls` is Termux Node (bionic CA store), **not** musl grok rustls. `checks.grokTls.probed` is false. |
 | `readelf -l` 16 KiB LOAD alignment | note (future API 35) | not a v1 blocker | **NOTE (host).** `libnode.so` / `libnodewrap.so` LOAD `Align 0x4000` (16 KiB). `libgrok.so` musl LOAD `Align 0x10000` (64 KiB). Not a v1 blocker. |
 | FGS doff: Node pid alive after 60s headset-off | required for v1 lifecycle | fix FGS type/wake lock before chat | **PENDING (needs Quest 3 + adb)** |
 | `grok -p hi` | **not PR 1** | needs `auth.json` (PR 4+) | skipped |

@@ -4,17 +4,29 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 GROK_BUILD_REV="${GROK_BUILD_REV:-bc7f02eddd3d84085849dc19ed216f11c23b0571}"
+CACHE_DIR="${CACHE_DIR:-/opt/cache}"
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates git build-essential pkg-config >/dev/null
+apt-get install -y -qq curl ca-certificates git build-essential pkg-config unzip >/dev/null
 if ! command -v rustup >/dev/null 2>&1; then
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
 fi
 # shellcheck disable=SC1091
 . "$HOME/.cargo/env"
 rustup target add aarch64-linux-android
-NDK=/opt/cache/android-ndk-r26c
+NDK="${CACHE_DIR}/android-ndk-r26c"
+if [ ! -f "${NDK}/source.properties" ]; then
+  echo "Downloading Android NDK r26c (linux)…"
+  curl -L --fail --retry 3 -o "${CACHE_DIR}/ndk.zip" \
+    "https://dl.google.com/android/repository/android-ndk-r26c-linux.zip"
+  unzip -q "${CACHE_DIR}/ndk.zip" -d "${CACHE_DIR}"
+  rm -f "${CACHE_DIR}/ndk.zip"
+fi
 export ANDROID_NDK_HOME="$NDK"
 LINKER="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android32-clang"
+if [ ! -x "$LINKER" ]; then
+  echo "FATAL: NDK clang missing at $LINKER" >&2
+  exit 1
+fi
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$LINKER"
 export TARGET_CC="$LINKER"
 export RUSTFLAGS="-C link-arg=-pie -C link-arg=-Wl,-z,max-page-size=16384"

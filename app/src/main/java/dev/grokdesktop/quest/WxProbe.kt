@@ -1,5 +1,8 @@
 package dev.grokdesktop.quest
 
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -7,10 +10,6 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-/**
- * W^X control: exec from nativeLibraryDir must work; the same bytes from filesDir
- * must fail EACCES on targetSdk 34.
- */
 object WxProbe {
     private const val TAG = "GrokWx"
 
@@ -50,7 +49,13 @@ object WxProbe {
         try {
             paths.node.copyTo(copy, overwrite = true)
             copy.setReadable(true, false)
-            copy.setExecutable(true, false)
+            val chmodOk = copy.setExecutable(true, false)
+            if (!chmodOk) {
+                Os.chmod(
+                    copy.absolutePath,
+                    OsConstants.S_IRUSR or OsConstants.S_IWUSR or OsConstants.S_IXUSR,
+                )
+            }
             copyNote = exec(
                 name = "filesDir copy of libnode.so --version (must EACCES)",
                 executable = copy,
@@ -58,6 +63,12 @@ object WxProbe {
                 ldLibraryPath = paths.nativeLibraryDir.absolutePath,
                 expectOk = false,
             )
+            copyNote.put("chmodOk", true)
+        } catch (e: ErrnoException) {
+            copyNote.put("name", "filesDir copy of libnode.so")
+            copyNote.put("error", "chmod +x failed: ${e.message}")
+            copyNote.put("chmodOk", false)
+            copyNote.put("pass", false)
         } catch (t: Throwable) {
             copyNote.put("name", "filesDir copy of libnode.so")
             copyNote.put("error", t.toString())
@@ -103,18 +114,40 @@ object WxProbe {
             pb.redirectErrorStream(true)
             pb.environment()["LD_LIBRARY_PATH"] = ldLibraryPath
             val proc = pb.start()
-            val stdout = proc.inputStream.bufferedReader().readText()
+            val stdout = StringBuilder()
+            val reader = Thread({
+                try {
+                    proc.inputStream.bufferedReader().use { r ->
+                        val buf = CharArray(256)
+                        while (stdout.length < 8000) {
+                            val n = r.read(buf)
+                            if (n < 0) break
+                            stdout.append(buf, 0, n)
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+            }, "wx-stdout").apply { isDaemon = true; start() }
             val finished = proc.waitFor(8, TimeUnit.SECONDS)
             if (!finished) {
                 proc.destroyForcibly()
             }
+            try {
+                reader.join(500)
+            } catch (_: InterruptedException) {
+            }
             val code = if (finished) proc.exitValue() else -1
             result.put("ok", finished && code == 0)
             result.put("exitCode", code)
-            result.put("stdout", stdout.take(4000))
+            result.put("stdout", stdout.toString().take(4000))
             result.put("timedOut", !finished)
-            val pass = if (expectOk) finished && code == 0 else false
-            result.put("pass", pass)
+            result.put("eacces", false)
+            if (expectOk) {
+                result.put("pass", finished && code == 0)
+            } else {
+                result.put("pass", false)
+                result.put("error", "W^X control failed: filesDir exec was allowed")
+            }
             result
         } catch (e: IOException) {
             val msg = e.message ?: e.toString()

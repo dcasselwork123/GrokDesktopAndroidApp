@@ -1,9 +1,6 @@
 "use strict";
 
-/**
- * PR 1 spike entry (later PRs replace this with the real HTTP API overlay).
- * ProcessBuilder argv points at filesDir/app/server/questEntry.js.
- */
+/** ProcessBuilder argv: filesDir/app/server/questEntry.js */
 const fs = require("fs");
 const http = require("http");
 const https = require("https");
@@ -195,16 +192,23 @@ async function runChecks() {
     results.checks.resolvConf = { ok: false, error: err.message };
   }
 
-  results.checks.dnsApiXai = await lookup("api.x.ai");
-  results.checks.tlsApiXai = await tlsProbe("https://api.x.ai/");
+  results.checks.nodeDns = await lookup("api.x.ai");
+  results.checks.nodeTls = await tlsProbe("https://api.x.ai/");
 
   const grokBin = process.env.GROK_BIN;
   results.checks.grokVersion = await spawnCapture(grokBin, ["--version"], 15000);
-
-  // Tiny net probe without grok -p (that needs auth.json). If grok tries DNS
-  // internally on --version it will show up in stderr; otherwise Node DNS/TLS
-  // plus resolv.conf is the host-side evidence until a device login PR.
   results.checks.grokHelp = await spawnCapture(grokBin, ["--help"], 15000);
+  const resolvOk = !!(results.checks.resolvConf && results.checks.resolvConf.hasNameserver);
+  results.checks.grokDns = {
+    probed: false,
+    note: "grok --version/--help do not call getaddrinfo; Node dns.lookup is not musl getaddrinfo",
+    resolvHasNameserver: resolvOk,
+    muslReadsEtcResolvConf: true,
+  };
+  results.checks.grokTls = {
+    probed: false,
+    note: "Node https.get uses the Android CA store; musl grok bundles rustls — not the same row",
+  };
 
   writeResults();
 }

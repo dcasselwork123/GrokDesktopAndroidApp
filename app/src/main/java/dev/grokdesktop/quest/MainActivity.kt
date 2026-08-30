@@ -106,14 +106,10 @@ class MainActivity : AppCompatActivity() {
     private fun rerunWx() {
         val paths = RuntimePaths(this)
         paths.ensureDirs()
-        WxProbe.run(paths)
-        val i = Intent(this, NodeRuntimeService::class.java).setAction(NodeRuntimeService.ACTION_WX)
-        try {
-            ContextCompat.startForegroundService(this, i)
-        } catch (_: Exception) {
-            // Service may not be running; file results are enough.
-        }
-        render()
+        Thread {
+            WxProbe.run(paths)
+            handler.post { render() }
+        }.start()
     }
 
     private fun copyResults() {

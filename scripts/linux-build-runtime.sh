@@ -99,15 +99,12 @@ build_node_ndk() {
     ensure_node_src
     patch_android_configure
     cd "${NODE_SRC}"
-    log "=== executing (not sourcing) ./android-configure \"${NDK}\" 32 arm64 ==="
+    log "=== ./android-configure \"${NDK}\" 32 arm64 ==="
     ./android-configure "${NDK}" 32 arm64
-    # node.gyp still injects ARM64 -mbranch-protection into host js2c on some GYP
-    # versions; x86_64 gcc rejects it (nodejs/node#52512).
+    # x86_64 gcc rejects ARM64 PAC flags leaked into host js2c (nodejs/node#52512).
     find "${NODE_SRC}/out" -name '*.host.mk' -exec sed -i 's/-mbranch-protection=standard//g' {} +
-    # Stale host objects compiled with NDK clang / ARM64 flags will poison the link.
     rm -rf "${NODE_SRC}/out/Release/obj.host"
-    # android-configure exports CC/CXX as the NDK clang; host tools (V8 torque,
-    # mksnapshot, icu, js2c) must still use container gcc.
+    # NDK clang is CC/CXX; host tools need gcc (Android libc has no backtrace).
     log "=== make -j${JOBS} CC.host=gcc CXX.host=g++ ==="
     make -j"${JOBS}" CC.host=gcc CXX.host=g++ AR.host=ar LINK.host=g++
   fi

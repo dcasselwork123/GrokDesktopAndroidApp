@@ -11,9 +11,7 @@ for so in libnode.so libnodewrap.so libgrok.so; do
   echo "======== $so ========"
   if [ ! -f "$p" ]; then
     echo "MISSING $p"
-    if [ "$so" = "libnode.so" ] || [ "$so" = "libnodewrap.so" ]; then
-      fail=1
-    fi
+    fail=1
     continue
   fi
   file "$p" || true

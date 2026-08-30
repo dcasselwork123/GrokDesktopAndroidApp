@@ -9,7 +9,6 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
@@ -17,7 +16,8 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
-import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -34,12 +34,12 @@ class NodeRuntimeService : Service() {
         private const val CHANNEL_ID = "grok-runtime"
     }
 
+    private val runtimeOps = Executors.newSingleThreadExecutor()
     private val io = Executors.newCachedThreadPool()
     private val startedForeground = AtomicBoolean(false)
+    private val starting = AtomicBoolean(false)
     private var nodeProcess: Process? = null
     private var nodePid: Int = -1
-    private var wakeLock: PowerManager.WakeLock? = null
-    private var logPump: Thread? = null
     @Volatile private var notificationText: String = "Starting…"
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -53,16 +53,18 @@ class NodeRuntimeService : Service() {
         enterForeground(notificationText)
         when (intent?.action) {
             ACTION_STOP -> {
-                stopRuntime("stopped")
-                stopSelf()
+                runtimeOps.execute {
+                    stopRuntime("stopped")
+                    stopSelf()
+                }
                 return START_NOT_STICKY
             }
             ACTION_WX -> {
                 io.execute { runWx() }
-                return START_STICKY
+                return if (nodePid > 0) START_STICKY else START_NOT_STICKY
             }
             else -> {
-                io.execute { startRuntime() }
+                runtimeOps.execute { startRuntime() }
                 return START_STICKY
             }
         }
@@ -70,6 +72,7 @@ class NodeRuntimeService : Service() {
 
     override fun onDestroy() {
         stopRuntime("destroyed")
+        runtimeOps.shutdownNow()
         io.shutdownNow()
         super.onDestroy()
     }
@@ -78,7 +81,6 @@ class NodeRuntimeService : Service() {
         val paths = RuntimePaths(this)
         paths.ensureDirs()
         extractQuestEntry(paths)
-        runWx()
 
         if (!paths.wrap.isFile || !paths.node.isFile) {
             writeStatus(
@@ -95,7 +97,7 @@ class NodeRuntimeService : Service() {
             return
         }
         val existing = readPid(paths)
-        if (existing > 0 && pidAlive(existing)) {
+        if (existing > 0 && pidAlive(existing) && healthOk(paths)) {
             nodePid = existing
             notificationText = portLabel(paths) ?: "Runtime (adopted pid $existing)"
             enterForeground(notificationText)
@@ -103,7 +105,10 @@ class NodeRuntimeService : Service() {
             appendLog(paths, "adopted pid $existing")
             return
         }
-
+        if (!starting.compareAndSet(false, true)) {
+            writeStatus("starting", "start already in flight")
+            return
+        }
         try {
             val pb = ProcessBuilder(
                 paths.wrap.absolutePath,
@@ -130,17 +135,19 @@ class NodeRuntimeService : Service() {
             nodeProcess = proc
             nodePid = pidOf(proc)
             paths.pidFile.writeText(nodePid.toString())
-            acquireWakeLock()
             notificationText = "Starting…"
             enterForeground(notificationText)
             writeStatus("starting", "spawned wrap pid $nodePid")
             appendLog(paths, "spawned libnodewrap pid=$nodePid")
             pumpLogs(paths, proc)
             watchHandshake(paths)
+            io.execute { runWx() }
         } catch (t: Throwable) {
             Log.e(TAG, "start failed", t)
             writeStatus("error", t.toString())
             enterForeground("Start failed")
+        } finally {
+            starting.set(false)
         }
     }
 
@@ -164,7 +171,7 @@ class NodeRuntimeService : Service() {
     }
 
     private fun pumpLogs(paths: RuntimePaths, proc: Process) {
-        logPump = Thread({
+        Thread({
             try {
                 proc.inputStream.bufferedReader().useLines { lines ->
                     lines.forEach { line ->
@@ -193,7 +200,7 @@ class NodeRuntimeService : Service() {
             val deadline = System.currentTimeMillis() + 30_000
             while (System.currentTimeMillis() < deadline) {
                 val label = portLabel(paths)
-                if (label != null) {
+                if (label != null && healthOk(paths)) {
                     notificationText = label
                     enterForeground(label)
                     writeStatus("running", label)
@@ -201,6 +208,7 @@ class NodeRuntimeService : Service() {
                 }
                 if (nodeProcess?.isAlive == false) {
                     writeStatus("error", "Node exited before handshake")
+                    enterForeground("Node exited")
                     return@execute
                 }
                 try {
@@ -209,7 +217,8 @@ class NodeRuntimeService : Service() {
                     return@execute
                 }
             }
-            writeStatus("running", "handshake timeout; see spike-results.json")
+            writeStatus("handshake-timeout", "no /api/health after 30s; see spike-results.json")
+            enterForeground("Handshake timeout")
         }
     }
 
@@ -223,20 +232,36 @@ class NodeRuntimeService : Service() {
         }
     }
 
+    private fun healthOk(paths: RuntimePaths): Boolean {
+        val port = try {
+            if (!paths.runtimeJson.isFile) return false
+            JSONObject(paths.runtimeJson.readText()).optInt("port", -1)
+        } catch (_: Exception) {
+            return false
+        }
+        if (port <= 0) return false
+        return try {
+            val conn = URL("http://127.0.0.1:$port/api/health").openConnection() as HttpURLConnection
+            conn.connectTimeout = 800
+            conn.readTimeout = 800
+            conn.requestMethod = "GET"
+            conn.instanceFollowRedirects = false
+            val code = conn.responseCode
+            conn.disconnect()
+            code in 200..299
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun stopRuntime(reason: String) {
         val pid = nodePid
-        val proc = nodeProcess
         if (pid > 0) {
             killProcessGroup(pid)
         }
-        // Group kill only — never Process.killProcess (that is not a pgid kill).
-        try {
-            proc?.waitFor(1, TimeUnit.SECONDS)
-        } catch (_: InterruptedException) {
-        }
         nodeProcess = null
         nodePid = -1
-        releaseWakeLock()
+        starting.set(false)
         try {
             RuntimePaths(this).pidFile.delete()
         } catch (_: Exception) {
@@ -250,18 +275,40 @@ class NodeRuntimeService : Service() {
             Os.kill(-pid, OsConstants.SIGTERM)
         } catch (e: ErrnoException) {
             Log.w(TAG, "SIGTERM -$pid: ${e.message}")
+            try {
+                Os.kill(pid, OsConstants.SIGTERM)
+            } catch (e2: ErrnoException) {
+                Log.w(TAG, "SIGTERM $pid: ${e2.message}")
+            }
         }
         val proc = nodeProcess
-        val died = try {
-            proc?.waitFor(3, TimeUnit.SECONDS) == true
-        } catch (_: InterruptedException) {
-            false
+        val died = if (proc != null) {
+            try {
+                proc.waitFor(3, TimeUnit.SECONDS) == true
+            } catch (_: InterruptedException) {
+                false
+            }
+        } else {
+            val until = System.currentTimeMillis() + 3000
+            while (System.currentTimeMillis() < until && pidAlive(pid)) {
+                try {
+                    Thread.sleep(100)
+                } catch (_: InterruptedException) {
+                    break
+                }
+            }
+            !pidAlive(pid)
         }
-        if (!died && (proc?.isAlive == true || pidAlive(pid))) {
+        if (!died && pidAlive(pid)) {
             try {
                 Os.kill(-pid, OsConstants.SIGKILL)
             } catch (e: ErrnoException) {
                 Log.w(TAG, "SIGKILL -$pid: ${e.message}")
+                try {
+                    Os.kill(pid, OsConstants.SIGKILL)
+                } catch (e2: ErrnoException) {
+                    Log.w(TAG, "SIGKILL $pid: ${e2.message}")
+                }
             }
         }
     }
@@ -309,23 +356,6 @@ class NodeRuntimeService : Service() {
         }
     }
 
-    private fun acquireWakeLock() {
-        if (wakeLock?.isHeld == true) return
-        val pm = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "grokdesktop:runtime").apply {
-            setReferenceCounted(false)
-            acquire()
-        }
-    }
-
-    private fun releaseWakeLock() {
-        try {
-            if (wakeLock?.isHeld == true) wakeLock?.release()
-        } catch (_: Exception) {
-        }
-        wakeLock = null
-    }
-
     private fun ensureChannel() {
         val nm = getSystemService(NotificationManager::class.java)
         val ch = NotificationChannel(
@@ -340,7 +370,7 @@ class NodeRuntimeService : Service() {
     private fun enterForeground(text: String) {
         notificationText = text
         val notif = buildNotification(text)
-        if (!startedForeground.getAndSet(true)) {
+        if (!startedForeground.get()) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
                     NOTIF_ID,
@@ -350,6 +380,7 @@ class NodeRuntimeService : Service() {
             } else {
                 startForeground(NOTIF_ID, notif)
             }
+            startedForeground.set(true)
         } else {
             val nm = getSystemService(NotificationManager::class.java)
             nm.notify(NOTIF_ID, notif)

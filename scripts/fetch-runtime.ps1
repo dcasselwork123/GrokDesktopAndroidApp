@@ -36,15 +36,6 @@ function Write-Step([string]$msg) {
     Write-Host "==> $msg" -ForegroundColor Cyan
 }
 
-function Invoke-Docker([string]$dockerArgs, [string]$failMessage) {
-    $cmd = "docker $dockerArgs"
-    Write-Host $cmd -ForegroundColor DarkGray
-    cmd /c $cmd
-    if ($LASTEXITCODE -ne 0) {
-        throw "$failMessage (exit $LASTEXITCODE)"
-    }
-}
-
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker is required (Linux engine) to cross-compile Node / inspect ELF."
 }
@@ -102,80 +93,16 @@ if (-not $SkipGrok -and -not $wantBionic) {
     Write-Host "installed libgrok.so ($((Get-Item (Join-Path $JniDir 'libgrok.so')).Length) bytes)"
 }
 
-if ($wantBionic -and -not $SkipGrok) {
-    Write-Step "GROK_BIONIC=1 — build xai-org/grok-build $GrokBuildRev for aarch64-linux-android32"
-    Write-Host @"
-Recipe (gated; multi-hour cargo). SOURCE_REV pin: $GrokBuildRev
-  Host: Linux (this Docker invocation)
-  NDK: r26c
-  Target: aarch64-linux-android
-  API: 32
-  rustup target add aarch64-linux-android
-  export ANDROID_NDK_HOME=/opt/cache/android-ndk-r26c
-  LINKER=`$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android32-clang
-  export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=`$LINKER
-  export TARGET_CC=`$LINKER
-  export RUSTFLAGS='-C link-arg=-pie -C link-arg=-Wl,-z,max-page-size=16384'
-  git clone --depth 1 https://github.com/xai-org/grok-build.git
-  git checkout $GrokBuildRev
-  cargo build --release --target aarch64-linux-android -p xai-grok-pager-bin
-  # Artifact is xai-grok-pager; official installs ship it as grok.
-  # Copy as app/src/main/jniLibs/arm64-v8a/libgrok.so
-"@
-    $bionicSh = @"
-set -euo pipefail
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq curl ca-certificates git build-essential pkg-config >/dev/null
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-. `$HOME/.cargo/env
-rustup target add aarch64-linux-android
-NDK=/opt/cache/android-ndk-r26c
-export ANDROID_NDK_HOME=`$NDK
-LINKER=`$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android32-clang
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=`$LINKER
-export TARGET_CC=`$LINKER
-export RUSTFLAGS='-C link-arg=-pie -C link-arg=-Wl,-z,max-page-size=16384'
-SRC=/opt/cache/grok-build
-if [ ! -d "`$SRC/.git" ]; then
-  git clone https://github.com/xai-org/grok-build.git `$SRC
-fi
-cd `$SRC
-git fetch --depth 1 origin $GrokBuildRev || git fetch origin
-git checkout $GrokBuildRev
-cargo build --release --target aarch64-linux-android -p xai-grok-pager-bin
-BIN=`$SRC/target/aarch64-linux-android/release/xai-grok-pager
-if [ ! -f "`$BIN" ]; then
-  BIN=`$(find `$SRC/target/aarch64-linux-android/release -maxdepth 1 -type f -executable | head -n1)
-fi
-cp -f "`$BIN" /work/app/src/main/jniLibs/arm64-v8a/libgrok.so
-echo "BIONIC $GrokBuildRev" > /work/app/src/main/jniLibs/arm64-v8a/libgrok.origin.txt
-"@
-    $bionicFile = Join-Path $CacheRoot "bionic-build.sh"
-    Set-Content -Path $bionicFile -Value $bionicSh -Encoding utf8NoBOM
-    $repoUnix = ($RepoRoot -replace '\\', '/')
-    docker run --rm --platform $DockerPlatform `
-        -v grok-android-runtime:/opt/cache `
-        -v "${RepoRoot}:/work" `
-        rust:bookworm `
-        bash /work/scripts/linux-bionic-grok.sh
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Bionic grok-build failed. Leaving recipe in scripts for retry." -ForegroundColor Yellow
-    }
-}
-
 # ---------------------------------------------------------------------------
 # Node NDK build + libnodewrap (Docker linux/amd64, NDK r26c, API 32, arm64)
+# Also downloads NDK r26c into volume grok-android-runtime for bionic.
 # ---------------------------------------------------------------------------
 if (-not $SkipNode) {
     Write-Step "NDK r26c Node $NodeVer + libnodewrap.so (Docker $DockerPlatform)"
-    $envArg = ""
-    if ($SkipNode) { $envArg = "-e SKIP_NODE_BUILD=1" }
-    $jobsEnv = "-e JOBS=$Jobs -e NODE_SRC=/opt/cache/node-$NodeVer -e CACHE_DIR=/opt/cache -e WORK_DIR=/work"
     docker run --rm --platform $DockerPlatform `
         -v grok-android-runtime:/opt/cache `
         -v "${RepoRoot}:/work" `
-        -e "SKIP_NODE_BUILD=$(if ($SkipNode) { '1' } else { '0' })" `
+        -e "SKIP_NODE_BUILD=0" `
         -e "JOBS=$Jobs" `
         -e "NODE_SRC=/opt/cache/node-$NodeVer" `
         -e "CACHE_DIR=/opt/cache" `
@@ -185,6 +112,23 @@ if (-not $SkipNode) {
         bash /work/scripts/linux-build-runtime.sh
     if ($LASTEXITCODE -ne 0) {
         throw "linux-build-runtime.sh failed"
+    }
+}
+
+if ($wantBionic -and -not $SkipGrok) {
+    Write-Step "GROK_BIONIC=1 — build xai-org/grok-build $GrokBuildRev for aarch64-linux-android32"
+    docker run --rm --platform $DockerPlatform `
+        -v grok-android-runtime:/opt/cache `
+        -v "${RepoRoot}:/work" `
+        -e "CACHE_DIR=/opt/cache" `
+        -e "GROK_BUILD_REV=$GrokBuildRev" `
+        rust:bookworm `
+        bash /work/scripts/linux-bionic-grok.sh
+    if ($LASTEXITCODE -ne 0) {
+        throw "bionic grok-build failed (exit $LASTEXITCODE)"
+    }
+    if (-not (Test-Path (Join-Path $JniDir "libgrok.so"))) {
+        throw "libgrok.so missing after GROK_BIONIC=1"
     }
 }
 
