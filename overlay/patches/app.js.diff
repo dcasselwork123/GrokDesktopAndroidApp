@@ -1,5 +1,4 @@
 diff --git a/renderer/app.js b/renderer/app.js
-index d207ae1..005d122 100644
 --- a/renderer/app.js
 +++ b/renderer/app.js
 @@ -217,6 +217,7 @@
@@ -10,7 +9,7 @@ index d207ae1..005d122 100644
  
    function isLoopbackPage() {
      const host = String(location.hostname || "").toLowerCase();
-@@ -327,6 +328,10 @@
+@@ -327,6 +328,33 @@
      return !!(window.grokDesktop && window.grokDesktop.isElectron);
    }
  
@@ -18,10 +17,33 @@ index d207ae1..005d122 100644
 +    return !!(window.grokDesktop && window.grokDesktop.isQuest);
 +  }
 +
++  let questOpenedLoginKey = null;
++
++  function openQuestExternal(url) {
++    if (!url) return Promise.resolve(false);
++    if (window.grokDesktop && typeof window.grokDesktop.openExternal === "function") {
++      return Promise.resolve(window.grokDesktop.openExternal(url))
++        .then(() => true)
++        .catch(() => false);
++    }
++    return Promise.resolve(false);
++  }
++
++  function maybeAutoOpenDeviceUrl(login) {
++    if (!isQuest() || !login) return;
++    const url = login.device && login.device.url;
++    const userCode = login.device && login.device.userCode;
++    if (!url || !userCode) return;
++    const key = String(login.startedAt || login.pid || "") + "|" + String(url);
++    if (questOpenedLoginKey === key) return;
++    questOpenedLoginKey = key;
++    void openQuestExternal(url);
++  }
++
    // ---------- Working folder (cwd) ----------
    function persistLastCwd(cwd) {
      try {
-@@ -3531,6 +3536,7 @@
+@@ -3533,6 +3561,7 @@
    function guessDefaultCwd() {
      // Prefer last session cwd, else leave blank (server uses process.cwd)
      if (state.sessions[0]?.cwd) return state.sessions[0].cwd;
@@ -29,7 +51,7 @@ index d207ae1..005d122 100644
      return "";
    }
  
-@@ -6446,6 +6452,7 @@
+@@ -6468,6 +6497,7 @@
    let remoteLanSaving = false;
  
    function canShowLanToggle() {
@@ -37,7 +59,7 @@ index d207ae1..005d122 100644
      return (isElectron() || isLoopbackPage()) && !isPhoneUi();
    }
  
-@@ -6519,6 +6526,7 @@
+@@ -6541,6 +6571,7 @@
    }
  
    async function loadRemoteInfo() {
@@ -45,7 +67,28 @@ index d207ae1..005d122 100644
      const urlEl = document.getElementById("remote-url");
      try {
        const info = await api("/api/remote");
-@@ -6610,6 +6618,7 @@
+@@ -6567,17 +6598,18 @@
+   }
+   if (els.btnAccountLoginX) {
+     els.btnAccountLoginX.addEventListener("click", () => {
+-      if (isPhoneUi()) {
++      if (isPhoneUi() && !isQuest()) {
+         if (els.accountPopHint) {
+           els.accountPopHint.textContent = "Start sign-in on the PC, then Recheck here.";
+         }
+         return;
+       }
+-      startSignIn({ method: "x" });
++      startSignIn({ method: isQuest() ? "device" : "x" });
+     });
+   }
+   if (els.btnAccountLoginEmail) {
+     els.btnAccountLoginEmail.addEventListener("click", () => {
++      if (isQuest()) return;
+       if (isPhoneUi()) {
+         if (els.accountPopHint) {
+           els.accountPopHint.textContent = "Start sign-in on the PC, then Recheck here.";
+@@ -6632,6 +6664,7 @@
    });
  
    els.btnRemote.addEventListener("click", async () => {
@@ -53,7 +96,7 @@ index d207ae1..005d122 100644
      els.modalBackdrop.classList.remove("hidden");
      await loadRemoteInfo();
    });
-@@ -6656,7 +6665,7 @@
+@@ -6678,7 +6711,7 @@
    }
  
    const btnRotate = document.getElementById("btn-rotate-token");
@@ -62,7 +105,7 @@ index d207ae1..005d122 100644
      btnRotate.addEventListener("click", async () => {
        if (!confirm("Existing phone tabs will need the new URL.")) return;
        try {
-@@ -6671,7 +6680,7 @@
+@@ -6693,7 +6726,7 @@
    }
  
    const lanCheck = document.getElementById("remote-allow-lan");
@@ -71,3 +114,241 @@ index d207ae1..005d122 100644
      lanCheck.addEventListener("change", async () => {
        const next = !!lanCheck.checked;
        const prev = !!(lastRemoteInfo && lastRemoteInfo.allowLan);
+@@ -6762,7 +6795,7 @@
+     els.accountPopover.setAttribute("aria-hidden", open ? "false" : "true");
+     els.btnAccount.setAttribute("aria-expanded", open ? "true" : "false");
+     if (els.accountPopHint && !open) els.accountPopHint.textContent = "";
+-    if (open && isPhoneUi() && els.accountPopHint) {
++    if (open && isPhoneUi() && !isQuest() && els.accountPopHint) {
+       const auth = (state.setup && state.setup.auth) || {};
+       const signedIn = !!(state.setup && (state.setup.ready || auth.valid));
+       els.accountPopHint.textContent = signedIn
+@@ -6799,16 +6832,27 @@
+         sep.classList.toggle("hidden", !signedIn);
+       }
+     }
+-    const phoneLock = isPhoneUi();
++    const phoneLock = isPhoneUi() && !isQuest();
+     if (els.btnAccountLoginX) {
+-      els.btnAccountLoginX.textContent = signedIn ? "Switch to X account" : "Sign in with X";
+-      els.btnAccountLoginX.disabled = phoneLock;
++      if (isQuest()) {
++        els.btnAccountLoginX.textContent = signedIn ? "Switch account" : "Sign in";
++        els.btnAccountLoginX.disabled = false;
++      } else {
++        els.btnAccountLoginX.textContent = signedIn ? "Switch to X account" : "Sign in with X";
++        els.btnAccountLoginX.disabled = phoneLock;
++      }
+     }
+     if (els.btnAccountLoginEmail) {
+-      els.btnAccountLoginEmail.textContent = signedIn
+-        ? "Switch to email account"
+-        : "Sign in with email";
+-      els.btnAccountLoginEmail.disabled = phoneLock;
++      if (isQuest()) {
++        els.btnAccountLoginEmail.classList.add("hidden");
++        els.btnAccountLoginEmail.disabled = true;
++      } else {
++        els.btnAccountLoginEmail.classList.remove("hidden");
++        els.btnAccountLoginEmail.textContent = signedIn
++          ? "Switch to email account"
++          : "Sign in with email";
++        els.btnAccountLoginEmail.disabled = phoneLock;
++      }
+     }
+     if (phoneLock && els.accountPopHint) {
+       els.accountPopHint.textContent = signedIn
+@@ -7135,6 +7179,11 @@
+       ? `Last account: ${setup.auth.email}`
+       : authReasonLabel(setup.auth?.reason);
+ 
++    if (isQuest()) {
++      renderQuestSetupGate(setup, login, emailHint);
++      return;
++    }
++
+     if (login.running) {
+       const method = login.method || state.loginMethod;
+       const methodHint =
+@@ -7250,6 +7299,114 @@
+     setStatus(false, "Sign in required");
+   }
+ 
++  function renderQuestSetupGate(setup, login, emailHint) {
++    const device = login.device || {};
++    const userCode = device.userCode || null;
++    const url = device.url || null;
++    const tail = String(login.debugTail || login.logTail || "").slice(-4096);
++    const failed =
++      login.finishedAt &&
++      login.exitCode !== 0 &&
++      login.exitCode !== null &&
++      !setup.auth?.valid;
++
++    const actions = [];
++    if (login.running) {
++      if (url) {
++        actions.push({
++          label: "Open sign-in",
++          primary: true,
++          id: "btn-setup-open-signin",
++          onClick: () => openQuestExternal(url),
++        });
++      } else {
++        actions.push({ label: "Signing in…", primary: true, disabled: true });
++      }
++      actions.push({
++        label: "I’ve signed in — Recheck",
++        primary: false,
++        onClick: () => checkSetupAndBoot({ force: true }),
++      });
++      actions.push({
++        label: "Cancel",
++        primary: false,
++        onClick: async () => {
++          try {
++            await api("/api/auth/login/cancel", { method: "POST", body: "{}" });
++          } catch {
++            /* ignore */
++          }
++          stopLoginPoll();
++          await checkSetupAndBoot({ force: true });
++        },
++      });
++      if (userCode) {
++        maybeAutoOpenDeviceUrl(login);
++        setSetupChrome({
++          title: "Sign in to Grok",
++          message: "Enter this code on the sign-in page, then return here.",
++          detailsHtml:
++            `<div style="font-size:32px;font-weight:700;letter-spacing:0.14em;font-family:var(--mono);margin:10px 0 8px">${escapeHtml(
++              userCode
++            )}</div>` +
++            (url
++              ? `<div style="margin-top:6px;word-break:break-all">${escapeHtml(url)}</div>`
++              : "") +
++            `<div style="margin-top:8px">${escapeHtml(emailHint)}</div>`,
++          hint: "X vs email is chosen on grok.com. This headset uses grok login --device-auth.",
++          actions,
++        });
++      } else {
++        setSetupChrome({
++          title: "Sign in to Grok",
++          message: "Waiting for a device code from the Grok CLI. Raw log:",
++          detailsHtml:
++            `<div>${escapeHtml(emailHint)}</div>` +
++            `<pre style="text-align:left;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow:auto;margin:10px 0 0;font-size:11px">${escapeHtml(
++              tail || "(debug.log empty)"
++            )}</pre>`,
++          hint: "The gate shows this log until a short user code is parsed.",
++          actions,
++        });
++      }
++      setStatus(null, "Signing in…");
++      if (!state.loginPollTimer) startLoginPoll();
++      return;
++    }
++
++    setSetupChrome({
++      title: failed ? "Sign-in didn’t finish" : "Sign in to Grok",
++      message: failed
++        ? "Device-code sign-in didn’t finish. Try again."
++        : "Sign in with a device code. X or email is chosen on grok.com.",
++      detailsHtml:
++        `<div>${escapeHtml(emailHint)}</div>` +
++        (failed && login.error
++          ? `<div style="margin-top:6px;color:var(--danger)">${escapeHtml(login.error)}</div>`
++          : "") +
++        (!userCode && tail
++          ? `<pre style="text-align:left;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow:auto;margin:10px 0 0;font-size:11px">${escapeHtml(
++              tail
++            )}</pre>`
++          : ""),
++      hint: "Starts grok login --device-auth. Open the URL in Quest Browser when prompted.",
++      actions: [
++        {
++          label: "Sign in",
++          primary: true,
++          id: "btn-setup-login-device",
++          onClick: () => startSignIn({ method: "device" }),
++        },
++        {
++          label: "Recheck",
++          primary: false,
++          onClick: () => checkSetupAndBoot({ force: true }),
++        },
++      ],
++    });
++    setStatus(false, "Sign in required");
++  }
++
+   /** Lightweight path join for display only (avoid Node path in renderer). */
+   function pathJoinHint(home, ...parts) {
+     const sep = (home || "").includes("\\") ? "\\" : "/";
+@@ -7283,12 +7440,13 @@
+   }
+ 
+   async function startSignIn({ method = "x", replace = false } = {}) {
++    const quest = isQuest();
+     const useEmail = method === "email";
+-    state.loginMethod = useEmail ? "email" : "x";
++    state.loginMethod = quest ? "device" : useEmail ? "email" : "x";
+     setAccountPopoverOpen(false);
+-    const title = useEmail ? "Sign in with email" : "Sign in with X";
++    const title = quest ? "Sign in to Grok" : useEmail ? "Sign in with email" : "Sign in with X";
+     const phoneSignInHint = "Start sign-in on the PC, then Recheck here.";
+-    if (isPhoneUi()) {
++    if (isPhoneUi() && !quest) {
+       showSetupGate();
+       setSetupChrome({
+         title: "Sign in on the PC",
+@@ -7305,9 +7463,11 @@
+       setStatus(false, "Sign in on the PC");
+       return;
+     }
+-    const startingHint = useEmail
+-      ? "Starting sign-in… in the browser, choose Sign in with email."
+-      : "Starting sign-in… in the browser, choose Sign in with X.";
++    const startingHint = quest
++      ? "Starting device-code sign-in…"
++      : useEmail
++        ? "Starting sign-in… in the browser, choose Sign in with email."
++        : "Starting sign-in… in the browser, choose Sign in with X.";
+     try {
+       if (replace && state.setupReady) {
+         try {
+@@ -7328,7 +7488,9 @@
+       });
+       await api("/api/auth/login", {
+         method: "POST",
+-        body: JSON.stringify({ oauth: true, method: state.loginMethod }),
++        body: JSON.stringify(
++          quest ? { oauth: false } : { oauth: true, method: state.loginMethod }
++        ),
+       });
+       const setup = await fetchSetupStatus();
+       renderSetupGate(setup);
+@@ -7366,13 +7528,17 @@
+           {
+             label: "Try again",
+             primary: true,
+-            onClick: () => startSignIn({ method: state.loginMethod || "x" }),
+-          },
+-          {
+-            label: useEmail ? "Sign in with X instead" : "Sign in with email instead",
+-            primary: false,
+-            onClick: () => startSignIn({ method: useEmail ? "x" : "email" }),
++            onClick: () => startSignIn({ method: state.loginMethod || (quest ? "device" : "x") }),
+           },
++          ...(quest
++            ? []
++            : [
++                {
++                  label: useEmail ? "Sign in with X instead" : "Sign in with email instead",
++                  primary: false,
++                  onClick: () => startSignIn({ method: useEmail ? "x" : "email" }),
++                },
++              ]),
+           {
+             label: "Recheck",
+             primary: false,

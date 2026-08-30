@@ -5,10 +5,26 @@ import org.json.JSONObject
 
 class GrokJsBridge(
     private val complete: (id: String, err: String?, value: Any?) -> Unit,
+    private val openExternalUrl: (url: String) -> Boolean,
 ) {
     @JavascriptInterface
     fun pickFolder(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
         complete(id, "not implemented", null)
+    }
+
+    @JavascriptInterface
+    fun openExternal(id: String, argsJson: String) {
+        val url = try {
+            JSONObject(argsJson).optString("url", "")
+        } catch (_: Exception) {
+            ""
+        }
+        val ok = try {
+            openExternalUrl(url)
+        } catch (_: Exception) {
+            false
+        }
+        if (ok) complete(id, null, true) else complete(id, "blocked url", false)
     }
 
     @JavascriptInterface

@@ -1,0 +1,9 @@
+To sign in, visit https://grok.com/device and enter the code ABCD-EFGH to continue.
+
+Open the URL on any device, enter the code, and complete authentication.
+Grok polls until the login is confirmed.
+
+Waiting for authorization...
+
+(device_code blob is not a user code)
+device_code: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

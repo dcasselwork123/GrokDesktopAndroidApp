@@ -101,7 +101,7 @@ class MainActivity : AppCompatActivity() {
         settings.allowFileAccess = false
         settings.setSupportMultipleWindows(false)
         webView.setBackgroundColor(ContextCompat.getColor(this, R.color.grok_bg))
-        webView.addJavascriptInterface(GrokJsBridge(::completeBridge), "GrokAndroid")
+        webView.addJavascriptInterface(GrokJsBridge(::completeBridge, ::openAuthTab), "GrokAndroid")
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                 val msg = consoleMessage ?: return true
@@ -111,7 +111,14 @@ class MainActivity : AppCompatActivity() {
         }
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                return !isAllowedPanelUrl(request.url)
+                val uri = request.url
+                if (isAllowedPanelUrl(uri)) return false
+                val href = uri.toString()
+                if (AuthTabLauncher.isSafeExternalUrl(href)) {
+                    AuthTabLauncher.open(this@MainActivity, href)
+                    return true
+                }
+                return true
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
@@ -285,6 +292,12 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript("setPanelState($payload)", null)
     }
 
+    private fun openAuthTab(url: String): Boolean {
+        if (!AuthTabLauncher.isSafeExternalUrl(url)) return false
+        handler.post { AuthTabLauncher.open(this, url) }
+        return true
+    }
+
     private fun isAllowedPanelUrl(uri: Uri): Boolean {
         if (uri.scheme == "file" && (uri.path ?: "").startsWith("/android_asset")) return true
         val host = uri.host ?: return false
@@ -320,6 +333,7 @@ class MainActivity : AppCompatActivity() {
       else p.resolve(value);
     },
     getApiInfo: () => Promise.resolve({ url: location.origin, port: Number(location.port) }),
+    openExternal: (url) => call("openExternal", { url: url || "" }),
     pickFolder: (defaultPath) => call("pickFolder", { defaultPath: defaultPath || "" }),
     setTheme: (pref) => call("setTheme", { pref: pref }),
     openSidechat: (payload) => call("openSidechat", payload || {}),

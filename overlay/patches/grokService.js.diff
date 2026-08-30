@@ -1,8 +1,155 @@
 diff --git a/server/grokService.js b/server/grokService.js
-index e623d2a..37a3184 100644
 --- a/server/grokService.js
 +++ b/server/grokService.js
-@@ -1190,6 +1190,7 @@ function runPrompt({
+@@ -238,16 +238,94 @@ const loginState = {
+   error: null,
+   log: "",
+   method: null,
++  device: null,
+ };
+ 
++function isShortUserCode(s) {
++  const t = String(s || "");
++  if (!t || t.length > 17) return false;
++  if (/[._]/.test(t)) return false;
++  return /^[A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8})?$/i.test(t);
++}
++
++/** Keep in sync with overlay/fixtures/parse-device-auth.js */
++function parseDeviceAuth(text) {
++  const raw = String(text || "");
++  let url = null;
++  const urlMatch = raw.match(/https:\/\/[^\s"'<>\\]+/i);
++  if (urlMatch) {
++    url = urlMatch[0].replace(/[.,;:!?)\]>]+$/g, "");
++  }
++
++  let userCode = null;
++  const labeled = raw.match(
++    /(?:user[\s_-]*code|enter(?:\s+the)?\s+code|code)\s*[:=]?\s*([A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8})?)/i
++  );
++  if (labeled && isShortUserCode(labeled[1])) {
++    userCode = labeled[1].toUpperCase();
++  }
++  if (!userCode) {
++    const hyphen = raw.match(/\b([A-Z0-9]{4,8}-[A-Z0-9]{4,8})\b/i);
++    if (hyphen && isShortUserCode(hyphen[1])) {
++      userCode = hyphen[1].toUpperCase();
++    }
++  }
++  if (!url && !userCode) return null;
++  return { url: url || null, userCode: userCode || null };
++}
++
++function redactLoginChunk(chunk) {
++  let text = String(chunk || "");
++  text = text.replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9._-]+\b/g, "[redacted-jwt]");
++  text = text.replace(
++    /\b(access_token|refresh_token|device_code|id_token)\s*[:=]\s*\S+/gi,
++    (_, name) => `${name}=[redacted]`
++  );
++  text = text.replace(/\b[A-Za-z0-9_-]{40,}\b/g, "[redacted]");
++  return text;
++}
++
++function appendLoginDebug(chunk) {
++  const text = redactLoginChunk(chunk);
++  if (!text) return;
++  try {
++    const dir = path.join(os.homedir(), ".grok-desktop");
++    fs.mkdirSync(dir, { recursive: true });
++    fs.appendFileSync(path.join(dir, "debug.log"), text, "utf8");
++  } catch {
++    /* ignore */
++  }
++}
++
++function readDebugTail(maxBytes) {
++  const n = maxBytes || 4096;
++  try {
++    const p = path.join(os.homedir(), ".grok-desktop", "debug.log");
++    if (!fs.existsSync(p)) return "";
++    const st = fs.statSync(p);
++    const start = Math.max(0, st.size - n);
++    const fd = fs.openSync(p, "r");
++    try {
++      const len = st.size - start;
++      const buf = Buffer.alloc(len);
++      fs.readSync(fd, buf, 0, len, start);
++      return buf.toString("utf8");
++    } finally {
++      fs.closeSync(fd);
++    }
++  } catch {
++    return "";
++  }
++}
++
+ function appendLoginLog(chunk) {
+   if (!chunk) return;
+-  const text = String(chunk);
++  const text = redactLoginChunk(chunk);
+   loginState.log = (loginState.log + text).slice(-8000);
+ }
+ 
+ function getLoginStatus() {
+-  return {
++  const status = {
+     running: loginState.running,
+     pid: loginState.pid,
+     startedAt: loginState.startedAt,
+@@ -258,7 +336,12 @@ function getLoginStatus() {
+     // Last lines only — may contain a URL; never tokens from auth.json
+     logTail: loginState.log ? loginState.log.slice(-1200) : "",
+     method: loginState.method,
++    device: loginState.device || null,
+   };
++  if (process.env.GROK_QUEST_WORKSPACE) {
++    status.debugTail = readDebugTail(4096);
++  }
++  return status;
+ }
+ 
+ /**
+@@ -293,8 +376,10 @@ function startGrokLogin({ oauth = true, method = null } = {}) {
+   loginState.error = null;
+   loginState.log = "";
+   loginState.method = method === "email" ? "email" : "x";
++  loginState.device = null;
+ 
+-  const args = oauth ? ["login", "--oauth"] : ["login"];
++  const useOauth = process.env.GROK_QUEST_OAUTH === "1" && oauth !== false;
++  const args = useOauth ? ["login", "--oauth"] : ["login", "--device-auth"];
+ 
+   try {
+     loginChild = spawn(bin, args, {
+@@ -314,9 +399,22 @@ function startGrokLogin({ oauth = true, method = null } = {}) {
+   }
+ 
+   loginState.pid = loginChild.pid || null;
+-
+-  loginChild.stdout?.on("data", (d) => appendLoginLog(d));
+-  loginChild.stderr?.on("data", (d) => appendLoginLog(d));
++  appendLoginDebug("\n--- grok " + args.join(" ") + " " + loginState.startedAt + " ---\n");
++
++  const onLoginChunk = (d) => {
++    appendLoginLog(d);
++    appendLoginDebug(d);
++    const parsed = parseDeviceAuth(loginState.log);
++    if (parsed && (parsed.url || parsed.userCode)) {
++      const prev = loginState.device || {};
++      loginState.device = {
++        url: parsed.url || prev.url || null,
++        userCode: parsed.userCode || prev.userCode || null,
++      };
++    }
++  };
++  loginChild.stdout?.on("data", onLoginChunk);
++  loginChild.stderr?.on("data", onLoginChunk);
+ 
+   loginChild.on("error", (err) => {
+     loginState.error = err.message || String(err);
+@@ -1190,6 +1288,7 @@ function runPrompt({
        );
        args.push("--debug-file", debugFile);
      }
@@ -10,3 +157,11 @@ index e623d2a..37a3184 100644
      return args;
    }
  
+@@ -2041,6 +2140,7 @@ module.exports = {
+   cancelGrokLogin,
+   logoutGrok,
+   getLoginStatus,
++  parseDeviceAuth,
+   listSessions,
+   searchSessions,
+   listSessionsCli,
