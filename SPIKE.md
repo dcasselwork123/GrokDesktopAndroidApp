@@ -116,3 +116,19 @@ libgrok.so:  ELF 64-bit LSB executable, ARM aarch64, statically linked, stripped
 - Kotlin always starts **`libnodewrap.so`**, never `ProcessBuilder` on Node directly (no `setsid` → `kill(-pid)` misses grok).
 - `grok -p hi` is not this PR.
 - Debug APK (this machine): `app\build\outputs\apk\debug\app-debug.apk` (gitignored).
+
+## PR 5 addendum — toybox shell checklist (on-device)
+
+First Full access turn invokes `shell`. On-device checklist (send as the first user turn):
+
+```
+uname; ls; wget --version || true
+```
+
+| Check | Result |
+|-------|--------|
+| `uname` (toybox) | **PENDING** (needs Quest 3 + adb) |
+| `ls` of `$HOME/workspace` | **PENDING** (needs Quest 3 + adb) |
+| `wget --version \|\| true` | **PENDING** (needs Quest 3 + adb) — wget is not expected unless toybox provides it |
+
+`SHELL=/system/bin/sh`. `PATH=/system/bin:/system/xbin` (do not prepend `nativeLibraryDir`). After FGS/Node death, reconnect copy is `Turn died; session is on disk.` Session files stay under `$GROK_HOME/sessions`.

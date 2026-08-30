@@ -9,12 +9,19 @@ diff --git a/renderer/app.js b/renderer/app.js
  
    function isLoopbackPage() {
      const host = String(location.hostname || "").toLowerCase();
-@@ -327,6 +328,33 @@
+@@ -327,6 +328,40 @@
      return !!(window.grokDesktop && window.grokDesktop.isElectron);
    }
  
 +  function isQuest() {
 +    return !!(window.grokDesktop && window.grokDesktop.isQuest);
++  }
++
++  const QUEST_TURN_DIED = "Turn died; session is on disk.";
++
++  function surfaceQuestTurnDied(shell) {
++    if (shell) appendShellWarning(shell, QUEST_TURN_DIED);
++    showReconnectStatus(QUEST_TURN_DIED, "warn");
 +  }
 +
 +  let questOpenedLoginKey = null;
@@ -51,7 +58,126 @@ diff --git a/renderer/app.js b/renderer/app.js
      return "";
    }
  
-@@ -6468,6 +6497,7 @@
+@@ -4137,6 +4173,7 @@
+     let sawDone = false;
+     let aborted = false;
+     let deferred = false;
++    let questTurnDied = false;
+     let streamStarted = false;
+     let resolveTurn = null;
+     state.turnDone = new Promise((resolve) => {
+@@ -4150,6 +4187,11 @@
+         deferred = true;
+         return;
+       }
++      if (isQuest() && rec.dead) {
++        questTurnDied = true;
++        surfaceQuestTurnDied(shell);
++        return;
++      }
+       if (rec.finished) {
+         const sid = rec.sessionId || gotSessionId;
+         if (sid) {
+@@ -4163,6 +4205,11 @@
+       }
+       if (!sawDone && !aborted) {
+         if (gotSessionId || clientTurnId) {
++          if (isQuest()) {
++            questTurnDied = true;
++            surfaceQuestTurnDied(shell);
++            return;
++          }
+           deferred = true;
+           return;
+         }
+@@ -4240,6 +4287,7 @@
+       } else if (turnGen === state.turnGen) {
+         if (sawDone) clearPendingReattach();
+         await finishTurn(gotSessionId);
++        if (questTurnDied) showReconnectStatus(QUEST_TURN_DIED, "warn");
+       } else if (gotSessionId) {
+         state.liveSessionIds.add(gotSessionId);
+         void refreshLiveRuns();
+@@ -4617,6 +4665,13 @@
+             sawDone = rec.ok;
+             aborted = rec.aborted;
+             if (rec.deferred) return;
++            if (isQuest() && rec.dead) {
++              surfaceQuestTurnDied(shell);
++              clearPendingReattach();
++              if (turnGen === state.turnGen) await finishTurn(sessionId);
++              showReconnectStatus(QUEST_TURN_DIED, "warn");
++              return;
++            }
+             if (rec.finished) {
+               clearPendingReattach();
+               if (turnGen === state.turnGen) {
+@@ -4662,6 +4717,14 @@
+ 
+       if (!serverWorked && age < 15000) return;
+ 
++      if (isQuest() && !serverWorked) {
++        surfaceQuestTurnDied(state.liveShell);
++        clearPendingReattach();
++        await finishTurn(sessionToLoad);
++        showReconnectStatus(QUEST_TURN_DIED, "warn");
++        return;
++      }
++
+       clearPendingReattach();
+       if (state.running || state.abortController) {
+         nextTurnGen();
+@@ -4839,6 +4902,21 @@
+     }
+     if (isPageHidden()) return { ok: false, deferred: true };
+-    if (sessionId || clientTurnId) return { ok: false, deferred: true };
++    if (isQuest()) {
++      const foundAfter = await lookupRun({
++        sessionId,
++        clientTurnId,
++        includeDone: true,
++      });
++      if (foundAfter?.done) {
++        return { ok: false, finished: true, sessionId: foundAfter.sessionId || sessionId };
++      }
++      if (foundAfter?.runId) {
++        if (sessionId || clientTurnId) return { ok: false, deferred: true };
++        return { ok: false, aborted: false };
++      }
++      return { ok: false, dead: true };
++    }
++    if (sessionId || clientTurnId) return { ok: false, deferred: true };
+     return { ok: false, aborted: false };
+   }
+ 
+@@ -4871,6 +4948,7 @@
+     applyPendingQuestions(shell, active);
+ 
+     let deferred = false;
++    let questTurnDied = false;
+     try {
+       const first = await attachToRun(active.runId, {
+         shell,
+@@ -4887,6 +4965,10 @@
+         });
+         if (rec.ok || rec.finished) clearPendingReattach();
+         if (rec.deferred) deferred = true;
++        if (isQuest() && rec.dead) {
++          questTurnDied = true;
++          surfaceQuestTurnDied(shell);
++        }
+       }
+     } catch (err) {
+       if (err.name !== "AbortError") {
+@@ -4897,6 +4979,7 @@
+         if (sessionId) state.liveSessionIds.add(sessionId);
+       } else if (turnGen === state.turnGen) {
+         await finishTurn(sessionId);
++        if (questTurnDied) showReconnectStatus(QUEST_TURN_DIED, "warn");
+       } else if (sessionId) {
+         state.liveSessionIds.add(sessionId);
+         void refreshLiveRuns();
+@@ -6468,6 +6551,7 @@
    let remoteLanSaving = false;
  
    function canShowLanToggle() {

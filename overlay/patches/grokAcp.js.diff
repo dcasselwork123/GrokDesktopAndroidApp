@@ -1,0 +1,39 @@
+diff --git a/server/grokAcp.js b/server/grokAcp.js
+--- a/server/grokAcp.js
++++ b/server/grokAcp.js
+@@ -125,9 +125,16 @@
+   return ASK_METHODS.has(String(method || "").trim());
+ }
+ 
++function resolveAcpCwd(cwd) {
++  const trimmed = typeof cwd === "string" ? cwd.trim() : "";
++  if (trimmed) return trimmed;
++  return process.env.GROK_QUEST_WORKSPACE || process.cwd();
++}
++
+ function buildAcpArgs({ cwd, model, effort, permissionMode }) {
+   const args = [];
+-  if (cwd) args.push("--cwd", cwd);
++  const acpCwd = resolveAcpCwd(cwd);
++  if (acpCwd) args.push("--cwd", acpCwd);
+   if (model) args.push("-m", model);
+   if (effort) args.push("--effort", effort);
+   if (permissionMode) args.push("--permission-mode", permissionMode);
+@@ -156,7 +163,7 @@
+   const args = buildAcpArgs({ cwd, model, effort, permissionMode });
+   try {
+     child = spawn(grokBin, args, {
+-      cwd: cwd || process.cwd(),
++      cwd: resolveAcpCwd(cwd),
+       env: { ...process.env },
+       windowsHide: true,
+       stdio: ["pipe", "pipe", "pipe"],
+@@ -413,7 +420,7 @@
+     const caps = (init && init.agentCapabilities) || {};
+     const canResume = !!(caps.sessionCapabilities && caps.sessionCapabilities.resume);
+     const canLoad = caps.loadSession === true;
+-    const sessionParams = { sessionId, cwd: cwd || process.cwd(), mcpServers: [] };
++    const sessionParams = { sessionId, cwd: resolveAcpCwd(cwd), mcpServers: [] };
+ 
+     replaying = true;
+     if (canResume) {
