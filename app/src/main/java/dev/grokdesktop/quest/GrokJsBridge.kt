@@ -7,10 +7,11 @@ class GrokJsBridge(
     private val complete: (id: String, err: String?, value: Any?) -> Unit,
     private val openExternalUrl: (url: String) -> Boolean,
     private val copyTextToClipboard: (text: String) -> Boolean,
+    private val openFolderPicker: (id: String) -> Unit,
 ) {
     @JavascriptInterface
     fun pickFolder(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
-        complete(id, "not implemented", null)
+        openFolderPicker(id)
     }
 
     @JavascriptInterface

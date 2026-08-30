@@ -25,6 +25,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
@@ -75,6 +76,11 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission(),
     ) { /* priming only; mic denial does not block the runtime */ }
 
+    private lateinit var folderPicker: FolderPicker
+    private val safTree = registerForActivityResult(OpenDocumentTree()) { uri ->
+        folderPicker.onSafTree(uri)
+    }
+
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             refreshRuntimeBinding()
@@ -103,8 +109,9 @@ class MainActivity : AppCompatActivity() {
         settings.allowFileAccess = false
         settings.setSupportMultipleWindows(false)
         webView.setBackgroundColor(ContextCompat.getColor(this, R.color.grok_bg))
+        folderPicker = FolderPicker(this, RuntimePaths(this), { safTree.launch(null) })
         webView.addJavascriptInterface(
-            GrokJsBridge(::completeBridge, ::openAuthTab, ::copyTextToClipboard),
+            GrokJsBridge(::completeBridge, ::openAuthTab, ::copyTextToClipboard, ::openFolderPicker),
             "GrokAndroid",
         )
         webView.webChromeClient = object : WebChromeClient() {
@@ -308,6 +315,16 @@ class MainActivity : AppCompatActivity() {
         val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("Grok sign-in", text))
         return true
+    }
+
+    private fun openFolderPicker(id: String) {
+        handler.post {
+            if (uiDead || isDestroyed || isFinishing) {
+                completeBridge(id, "picker closed", null)
+                return@post
+            }
+            folderPicker.show { path -> completeBridge(id, null, path) }
+        }
     }
 
     private fun isAllowedPanelUrl(uri: Uri): Boolean {

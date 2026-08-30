@@ -14,6 +14,8 @@ class RuntimePaths(ctx: Context) {
     val cxx: File = File(nativeLibraryDir, "libc++_shared.so")
     val home: File = File(filesDir, "home")
     val workspace: File = File(home, "workspace")
+    val projects: File = File(home, "projects")
+    val visibleProjects: File = File(ctx.getExternalFilesDir(null) ?: File(filesDir, "external"), "projects")
     val tmp: File = File(filesDir, "tmp")
     val grokHome: File = File(home, ".grok")
     val desktopDir: File = File(home, ".grok-desktop")
@@ -29,6 +31,8 @@ class RuntimePaths(ctx: Context) {
     fun ensureDirs() {
         home.mkdirs()
         workspace.mkdirs()
+        projects.mkdirs()
+        visibleProjects.mkdirs()
         tmp.mkdirs()
         grokHome.mkdirs()
         desktopDir.mkdirs()

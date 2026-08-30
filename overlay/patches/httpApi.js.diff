@@ -2,7 +2,29 @@ diff --git a/server/httpApi.js b/server/httpApi.js
 index ae86aec..8d9491e 100644
 --- a/server/httpApi.js
 +++ b/server/httpApi.js
-@@ -1524,7 +1524,13 @@ async function createServer({
+@@ -953,7 +953,9 @@ async function createServer({
+       }
+ 
+       if (pathname === "/api/remote" && req.method === "GET") {
+-        const info = await rebind();
++        const info = process.env.GROK_QUEST_WORKSPACE
++          ? currentRemoteInfo()
++          : await rebind();
+         if (isLoopbackRequest(req)) {
+           const payload = toLoopbackRemoteInfo(info);
+           payload.seenFolders = getSeenFolders();
+@@ -987,7 +989,9 @@ async function createServer({
+         if (typeof body.theme === "string") {
+           setThemePref(body.theme.trim());
+         }
+-        const payload = toLoopbackRemoteInfo(await rebind());
++        const payload = toLoopbackRemoteInfo(
++          process.env.GROK_QUEST_WORKSPACE ? currentRemoteInfo() : await rebind()
++        );
+         payload.seenFolders = getSeenFolders();
+         payload.permissionMode = getPermissionMode();
+         payload.theme = getThemePref();
+@@ -1524,7 +1528,13 @@ async function createServer({
          const newSession = !!body.newSession || !sessionId || !!forkFrom;
          let model = body.model || DEFAULT_MODEL_ID;
          let effort = body.effort || "high";
@@ -17,7 +39,7 @@ index ae86aec..8d9491e 100644
          if (remoteChat) {
            try {
              const resolved = assertModelEffort(body.model, body.effort, loadModels());
-@@ -1791,10 +1797,12 @@ async function createServer({
+@@ -1791,10 +1801,12 @@ async function createServer({
      throw err;
    }
  

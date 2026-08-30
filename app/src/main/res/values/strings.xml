@@ -10,4 +10,15 @@
     <string name="runtime_denied">Runtime not started — notification permission denied.</string>
     <string name="runtime_down">Runtime is down.</string>
     <string name="runtime_error">Runtime error. Tap Retry.</string>
+    <string name="folder_picker_title">Working folder</string>
+    <string name="folder_picker_workspace">Workspace</string>
+    <string name="folder_picker_projects">Projects</string>
+    <string name="folder_picker_visible">Headset files</string>
+    <string name="folder_picker_create">New project</string>
+    <string name="folder_picker_import">Import from Files</string>
+    <string name="folder_picker_name_hint">Project name</string>
+    <string name="folder_picker_copying">Copying…</string>
+    <string name="folder_picker_copying_n">Copied %d files…</string>
+    <string name="folder_picker_cap">Import is limited to 5000 files or 2 GB. Partial copy was deleted.</string>
+    <string name="folder_picker_import_failed">Could not import that folder.</string>
 </resources>
