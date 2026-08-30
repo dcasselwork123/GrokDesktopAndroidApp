@@ -53,9 +53,12 @@ class NodeRuntimeService : Service() {
         enterForeground(notificationText)
         when (intent?.action) {
             ACTION_STOP -> {
+                val stopId = startId
                 runtimeOps.execute {
                     stopRuntime("stopped")
-                    stopSelf()
+                    // Only if this STOP is still the latest onStartCommand.
+                    // A START delivered after this STOP keeps the instance.
+                    stopSelf(stopId)
                 }
                 return START_NOT_STICKY
             }
