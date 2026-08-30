@@ -4,10 +4,11 @@
 |-------|-------|
 | **Title** | Port Grok Desktop to a native Quest 3 Android app |
 | **Author** | Grok Design |
-| **Date** | 2026-08-29 |
+| **Date** | 2026-08-30 |
 | **Status** | Draft |
-| **Revision** | 4 (review round 3) |
-| **Workspace** | `E:\Dev\GrokDesktopAndroid` (new codebase) |
+| **Revision** | 5 (token-budget / review cut) |
+| **Workspace** | `E:\Dev\GrokDesktopAndroid` |
+| **GitHub** | https://github.com/dcasselwork123/GrokDesktopAndroidApp |
 | **Source of truth for UI/server** | `E:\Dev\GrokDesktop` (not rewritten in place) |
 | **Target device** | Meta Quest 3, Horizon OS, arm64-v8a, sideload APK |
 
@@ -553,7 +554,7 @@ Replace `server/appUpdate.js` git fetch/pull with GitHub Releases of **this Andr
 - `POST /api/update` — `{ ok: false, code: "SIDELOAD_REQUIRED", apkUrl }`. Do not `git pull`. Optionally download APK to `getExternalFilesDir`.
 - CLI `grok update` cannot exec into `filesDir` (W^X). Overlay `buildArgs` `--no-auto-update`. Update grok by updating the APK.
 
-Repo URL is an implementation placeholder until the GitHub remote exists (`dev.grokdesktop.quest` / this workspace). PR 10 no-ops the button if `BuildConfig.UPDATE_REPO` is empty.
+Repo: `dcasselwork123/GrokDesktopAndroidApp`. PR 10 no-ops the button if `BuildConfig.UPDATE_REPO` is empty.
 
 ### Quest 3 SDK levels
 
@@ -830,7 +831,7 @@ No cloud telemetry. Optional “Copy debug info” (setup, grok `--version`, dis
 
 Sideload-only.
 
-1. PR 1 spike APK: Node exec + grok exec + spawn + DNS + TLS + W^X control + FGS doff. Written `SPIKE.md`.
+1. PR 1 spike APK: Node exec + grok exec + spawn + DNS + TLS + W^X control + FGS doff. Written `SPIKE.md`. **Implemented** (host ELF PASS; on-device rows pending).
 2. PR 2 2D panel + specialUse FGS keepalive of a dummy/Node process (idle test) + RECORD_AUDIO priming hook (not PTT yet).
 3. PR 3 vendor JS + loopback `questEntry.js` + workspace cwd + SHELL/PATH.
 4. PR 4 device-code login.
@@ -847,9 +848,9 @@ Rollback: `adb install -r` previous APK. `HOME` survives reinstall of the same p
 
 ## Open Questions
 
-1. **PR 1 outcomes** (not product forks): which Node artifact actually execs (NDK 22 vs Termux); whether Horizon `/etc/resolv.conf` has a nameserver; whether musl grok TLS roots work; whether `/bin/sh` exists. If musl DNS fails, Key Decision is **bionic grok-build**, not a resolv patch.
+1. **PR 1 outcomes** (not product forks): host ELF is Termux Node **24.18.0** PIE (NDK 22 attempted, host-tool flags failed). Still unknown on device: Horizon `/etc/resolv.conf` nameserver, musl grok TLS roots, `/bin/sh` vs `/system/bin/sh`, FGS doff. If musl DNS fails, Key Decision is **bionic grok-build**, not a resolv patch.
 2. Horizon WebView `getUserMedia` on `http://127.0.0.1` — keep AudioRecord fallback.
-3. **GitHub repo URL** for Releases (`BuildConfig.UPDATE_REPO`). Product is sideload; repo can be created when PR 10 is ready.
+3. **GitHub repo URL** for Releases (`BuildConfig.UPDATE_REPO`) — **resolved:** `https://github.com/dcasselwork123/GrokDesktopAndroidApp`. Product stays sideload.
 4. Quest 3S in `supportedDevices` — recommended yes.
 5. Whether `category.2D` is required for the panel to launch — **PR 2 default APK is LAUNCHER-only.** `category.2D` is a second debug variant. If it prevents launch or dual-icons, ship LAUNCHER only; that is still GO.
 
@@ -905,6 +906,7 @@ Rollback: `adb install -r` previous APK. `HOME` survives reinstall of the same p
 | **`minSdk 32`, `targetSdk 34`, abi `arm64-v8a`; HzOS v76+ is API 34** | Meta + current OS. |
 | **Panel 1280×840 default, min 640×400** | Match Electron default; allow <800dp CSS without claiming minWidth 900. |
 | **`allowBackup=false`** | Keep `auth.json` off cloud backup. |
+| **Remaining PRs: one implementer pass + one reviewer pass; bugs only** | PR 1 burned a multi-round nit/suggestion loop. Do not repeat. See Agent execution. |
 
 ---
 
@@ -927,15 +929,40 @@ Rollback: `adb install -r` previous APK. `HOME` survives reinstall of the same p
 
 ---
 
+## Agent execution (token budget)
+
+PR 1 ran a long implementer + reviewer loop (NDK Node compile, host ELF, **three** review rounds including nits and suggestions). That is **not** the bar for PRs 2–10.
+
+**Cut remaining review work ~50%:**
+
+| Rule | Spec |
+|------|------|
+| Design | This document is the spec. **Do not re-run `/design` or another design-doc review** unless the user asks. |
+| Passes | **One implementer pass, one reviewer pass** per PR. |
+| Reviewer | File **bugs only** (correctness, security, breakage). No nits, no style, no comment-wording, no speculative lifecycle write-ups. If the PR description is met and it compiles, approve. |
+| Fix loop | Re-open only for a real bug the first review missed, or a fix that broke something. Then stop. |
+| Spike | Do not expand `SPIKE.md`. Device rows stay pending until a Quest is on `adb`. Do not rebuild Node from NDK unless binaries are missing **and** the user wants that path. Termux Node 24.18.0 PIE is an accepted spike artifact. |
+| Scope | One PR unless the user names more. |
+
+`/execute-plan` otherwise loops until every nit is closed. Always pass:
+
+```text
+--instructions "Reviewer: bugs only. One review round. No nits, no suggestions, no comment-wording. Approve if the PR description is met and it compiles."
+```
+
+Full agent rules: `AGENTS.md`.
+
+---
+
 ## PR Plan
 
 Spike-first. DNS/TLS/SHELL are not deferred until chat.
 
-### PR 1 — Feasibility spike: standalone Node + grok exec, spawn, DNS, TLS, W^X, FGS doff
+### PR 1 — Feasibility spike: standalone Node + grok exec, spawn, DNS, TLS, W^X, FGS doff **(implemented)**
 
 - **Depends on:** none
 - **Files:** `app/` skeleton, `jniLibs/`, `scripts/fetch-runtime.ps1` (NDK recipe + optional Termux unpack), `SPIKE.md`
-- **Description:** No chat UI. Prove the pass/fail matrix in `SPIKE.md` (PIE interpreter, `libnode.so --version`, filesDir `EACCES` control, `http.createServer 127.0.0.1:0`, `spawn(GROK_BIN,--version)`, grok `--version`, resolv.conf, `getaddrinfo api.x.ai`, TLS to `https://api.x.ai`, `/bin/sh` vs `/system/bin/sh`, FGS 60s doff, 16 KiB note, `libnodewrap` setsid so `kill(-pid)` hits grok). If musl DNS fails, **same APK** ships **bionic** `libgrok.so` (recipe above) — do not “GO” and discover chat cannot reach xAI in PR 4. No `/sdcard` resolv patch. JNI nodejs-mobile lib is a failed artifact, not a fallback.
+- **Description:** No chat UI. Prove the pass/fail matrix in `SPIKE.md`. **Status:** code + host ELF in tree. This APK vendors Termux **nodejs-lts 24.18.0** PIE (`/system/bin/linker64`); NDK Node 22.14.0 recipe remains primary but host-tool flags blocked the link. Official musl `grok-1.0.13-linux-aarch64` as `libgrok.so`. Device rows still need Quest 3 + `adb`. If musl DNS fails on device, same APK slot ships bionic `libgrok.so`. No `/sdcard` resolv patch. JNI nodejs-mobile is a failed artifact, not a fallback.
 
 ### PR 2 — 2D panel + specialUse FGS keepalive + WebView shell
 
@@ -989,7 +1016,7 @@ Spike-first. DNS/TLS/SHELL are not deferred until chat.
 
 - **Depends on:** PR 3+
 - **Files:** overlay `appUpdate.js` (Releases / `SIDELOAD_REQUIRED`); `overlay/patches/httpApi.js.diff` hunk for `GET /api/health` `disk.freeBytes` / `grokHomeBytes`; CSS 48dp
-- **Description:** GitHub Releases “Update available” if `UPDATE_REPO` set; else hide. Sideload instructions, not git pull. Disk warning from **httpApi** health overlay, not `appUpdate.js`. `allowBackup=false`. README + `AGENTS.md`.
+- **Description:** GitHub Releases “Update available” if `UPDATE_REPO` set (`dcasselwork123/GrokDesktopAndroidApp`); else hide. Sideload instructions, not git pull. Disk warning from **httpApi** health overlay, not `appUpdate.js`. `allowBackup=false`. `AGENTS.md` already exists; keep it current.
 
 ### Later (not v1) — Immersive 3D shell
 

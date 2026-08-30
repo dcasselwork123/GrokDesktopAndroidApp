@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="grok_bg">#FF101014</color>
+    <color name="grok_fg">#FFE8E8EA</color>
+    <color name="grok_accent">#FF7C5CFF</color>
+    <color name="ic_launcher_background">#FF101014</color>
+</resources>

@@ -1,0 +1,35 @@
+# Gradle / Android
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+.cxx/
+captures/
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Native binaries (run scripts/fetch-runtime.ps1 before assemble)
+app/src/main/jniLibs/**/*.so
+app/src/main/jniLibs/**/*.origin.txt
+app/src/main/assets/grok-desktop/
+vendor/
+overlay-out/
+
+# SDK / NDK caches (never commit)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# OS / editor
+Thumbs.db
+.DS_Store
+*.swp
+*~
+
+# Logs
+*.log
