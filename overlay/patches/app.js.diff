@@ -102,6 +102,124 @@ diff --git a/renderer/app.js b/renderer/app.js
      return "";
    }
  
+@@ -3705,3 +3705,117 @@
+   ];
+ 
++  const QUEST_VOICE_COMMANDS = [
++    {
++      re: /^(new chat|new session|start over|start a new chat)$/,
++      maxWords: 5,
++      chip: "New chat",
++      run: () => handleSlashCommand("/new"),
++    },
++    {
++      re: /^(clear chat|wipe this chat|clear this chat)$/,
++      maxWords: 4,
++      chip: "Clear chat",
++      run: () => handleSlashCommand("/clear"),
++    },
++    {
++      re: /^(export chat|download transcript|export this chat)$/,
++      maxWords: 4,
++      chip: "Export chat",
++      run: () => handleSlashCommand("/export"),
++    },
++    {
++      re: /^(help|show commands|show help)$/,
++      maxWords: 3,
++      chip: "Help",
++      run: () => handleSlashCommand("/help"),
++    },
++    {
++      re: /^(side chat)$/,
++      maxWords: 2,
++      chip: "Side chat",
++      run: () => handleSlashCommand("/btw"),
++    },
++    {
++      re: /^(by the way)\b(.*)$/,
++      maxWords: 8,
++      chip: "Side chat",
++      run: (m) => handleSlashCommand(("/btw " + String(m[2] || "").trim()).trim()),
++    },
++    {
++      re: /^(imagine|generate an image of|generate a picture of)\b(.*)$/,
++      chip: "Imagine",
++      run: (m) => {
++        const rest = String(m[2] || "").trim();
++        const result = handleSlashCommand(rest ? "/imagine " + rest : "/imagine");
++        if (result && result.rewrite) {
++          els.prompt.value = result.rewrite;
++          autoResizePrompt();
++          void sendPrompt();
++        }
++      },
++    },
++    {
++      re: /^(stop grok|stop the turn)$/,
++      maxWords: 4,
++      chip: "Stop",
++      run: () => {
++        void interruptCurrentTurn();
++      },
++    },
++  ];
++
++  function normalizeQuestVoiceUtterance(text) {
++    return String(text || "")
++      .trim()
++      .replace(/\s+/g, " ")
++      .toLowerCase();
++  }
++
++  function questVoiceWordCount(text) {
++    const t = String(text || "").trim();
++    if (!t) return 0;
++    return t.split(/\s+/).length;
++  }
++
++  function questVoiceSkipMatcher() {
++    if (!els.prompt) return false;
++    const start = typeof state.voice.insertStart === "number" ? state.voice.insertStart : 0;
++    const before = String(els.prompt.value || "").slice(0, start);
++    return /^\s*\/imagine(\s|$)/i.test(before);
++  }
++
++  function showVoiceCommandChip(label) {
++    const el = document.getElementById("voice-command-chip");
++    if (!el) return;
++    el.textContent = "Command: " + label;
++    el.classList.remove("hidden");
++    if (state.voiceCommandChipTimer) clearTimeout(state.voiceCommandChipTimer);
++    state.voiceCommandChipTimer = setTimeout(() => {
++      el.classList.add("hidden");
++      el.textContent = "";
++      state.voiceCommandChipTimer = null;
++    }, 1500);
++  }
++
++  function tryQuestVoiceCommand(utterance) {
++    if (!isQuest()) return false;
++    if (questVoiceSkipMatcher()) return false;
++    const u = normalizeQuestVoiceUtterance(utterance);
++    if (!u) return false;
++    const words = questVoiceWordCount(u);
++    for (const row of QUEST_VOICE_COMMANDS) {
++      const m = u.match(row.re);
++      if (!m) continue;
++      if (row.maxWords != null && words > row.maxWords) continue;
++      revertVoiceDraft();
++      try {
++        row.run(m);
++      } catch {
++        /* ignore */
++      }
++      showVoiceCommandChip(row.chip);
++      return true;
++    }
++    return false;
++  }
+   function slashQueryFromPrompt() {
 @@ -3917,7 +3946,19 @@
            lines.push("");
          }
@@ -350,6 +468,14 @@ diff --git a/renderer/app.js b/renderer/app.js
          startFileVoice();
          return;
       }
+@@ -5938,4 +6054,5 @@
+-      if (finalText) insertTranscript(finalText);
+-      else if (!state.voice.liveText) {
++      if (finalText && !(isQuest() && tryQuestVoiceCommand(finalText))) {
++        insertTranscript(finalText);
++      } else if (!finalText && !state.voice.liveText) {
+         setStatus(false, "Didn't catch that — try again");
+       }
 @@ -6468,6 +6630,7 @@
    let remoteLanSaving = false;
  

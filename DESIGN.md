@@ -1006,7 +1006,7 @@ Spike-first. DNS/TLS/SHELL are not deferred until chat.
 - **Files:** `PttAudioRecord.kt`, `onPermissionRequest` grant algorithm, `startPtt`/`stopPtt` bridge
 - **Description:** Existing `#btn-mic`; no auto-send. AudioRecord PCM16 16 kHz → `POST /api/stt/audio` if getUserMedia fails.
 
-### PR 9 — Spoken slash commands + `/btw` overlay
+### PR 9 — Spoken slash commands + `/btw` overlay **(implemented)**
 
 - **Depends on:** PR 8 (final transcript on PTT stop), PR 5 (`/btw` fork)
 - **Files:** overlay grammar table + `#voice-command-chip`, `OverlaySidechat.kt` via `openSidechat`

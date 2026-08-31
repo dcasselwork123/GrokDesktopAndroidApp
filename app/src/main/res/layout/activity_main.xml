@@ -19,4 +19,47 @@
         android:minHeight="48dp"
         android:text="@string/btn_retry"
         android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/sidechatOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/grok_bg"
+        android:clickable="true"
+        android:elevation="8dp"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="8dp">
+
+            <TextView
+                android:id="@+id/sidechatTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/sidechat_title"
+                android:textColor="@color/grok_fg"
+                android:textSize="16sp" />
+
+            <Button
+                android:id="@+id/btnSidechatClose"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:minWidth="88dp"
+                android:text="@string/sidechat_close" />
+        </LinearLayout>
+
+        <WebView
+            android:id="@+id/sidechatWebview"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
 </FrameLayout>

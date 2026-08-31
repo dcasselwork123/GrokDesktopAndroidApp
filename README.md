@@ -60,4 +60,6 @@ Image attach uses the existing composer picker (`#file-attach`, max 8 JPEG re-en
 
 Dictation uses the existing `#btn-mic` (click to start/stop; does not auto-send). The WebView grants `RESOURCE_AUDIO_CAPTURE` only to the loopback origin after `RECORD_AUDIO`. If `getUserMedia` fails, native `AudioRecord` (16 kHz mono PCM16, ~100 ms frames) posts to `POST /api/stt/audio`.
 
+Spoken commands (`new chat`, `export chat`, `imagine …`, `stop grok`, …) match only when the mic stops. `/btw` opens an in-panel side-chat WebView, not a second window.
+
 Results: `$HOME/.grok-desktop/spike-results.json` with `$HOME` = `filesDir/home`. FGS doff: start the panel, take the headset off ≥ 60s, confirm the Node pid in `node.pid` is still alive. See `SPIKE.md`.

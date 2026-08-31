@@ -28,6 +28,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import android.widget.Button
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree
@@ -93,6 +94,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var folderPicker: FolderPicker
+    private lateinit var overlaySidechat: OverlaySidechat
+    private lateinit var overlayBack: OnBackPressedCallback
     private val fileChooser: PanelFileChooser = PanelFileChooser { intent ->
         fileChooserLaunch.launch(intent)
     }
@@ -126,100 +129,17 @@ class MainActivity : AppCompatActivity() {
         btnRetry = findViewById(R.id.btnRetry)
         btnRetry.setOnClickListener { onRetry() }
 
-        val settings = webView.settings
-        settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true
-        settings.mediaPlaybackRequiresUserGesture = false
-        settings.allowFileAccess = false
-        settings.setSupportMultipleWindows(false)
-        webView.setBackgroundColor(ContextCompat.getColor(this, R.color.grok_bg))
         folderPicker = FolderPicker(this, RuntimePaths(this), { safTree.launch(null) })
-        webView.addJavascriptInterface(
-            GrokJsBridge(
-                ::completeBridge,
-                ::openAuthTab,
-                ::copyTextToClipboard,
-                ::openFolderPicker,
-                ::shareFileFromBridge,
-                ::startPttFromBridge,
-                ::stopPttFromBridge,
-            ),
-            "GrokAndroid",
-        )
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                val msg = consoleMessage ?: return true
-                Log.i(TAG_WEB, "${msg.message()} -- ${msg.sourceId()}:${msg.lineNumber()}")
-                return true
-            }
-
-            override fun onShowFileChooser(
-                webView: WebView?,
-                filePathCallback: ValueCallback<Array<Uri>>?,
-                fileChooserParams: FileChooserParams?,
-            ): Boolean {
-                if (uiDead || isDestroyed || isFinishing) {
-                    filePathCallback?.onReceiveValue(null)
-                    return true
-                }
-                return fileChooser.onShowFileChooser(filePathCallback, fileChooserParams)
-            }
-
-            override fun onPermissionRequest(request: PermissionRequest?) {
-                if (request == null) return
-                val origin = request.origin
-                val resources = request.resources ?: emptyArray()
-                val loopback = origin != null && isAllowedPanelUrl(origin)
-                val micOk = hasMicPermission()
-                val wantsMic = resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
-                if (loopback && micOk && wantsMic) {
-                    request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
-                } else {
-                    request.deny()
-                }
+        overlaySidechat = OverlaySidechat(this)
+        overlaySidechat.onDismiss = { overlayBack.isEnabled = false }
+        overlayBack = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                overlaySidechat.dismiss()
+                isEnabled = overlaySidechat.isOpen()
             }
         }
-        // blob: `<a download>` from /export does not hit this; overlay calls shareFile.
-        webView.setDownloadListener { url, _, contentDisposition, mimeType, _ ->
-            onWebViewDownload(url, contentDisposition, mimeType)
-        }
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val uri = request.url
-                if (isAllowedPanelUrl(uri)) return false
-                val href = uri.toString()
-                if (AuthTabLauncher.isSafeExternalUrl(href)) {
-                    AuthTabLauncher.open(this@MainActivity, href)
-                    return true
-                }
-                return true
-            }
-
-            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                if (url != null && isLoopbackHttp(url)) {
-                    view.evaluateJavascript(grokPreloadJs(), null)
-                }
-            }
-
-            override fun onPageFinished(view: WebView, url: String?) {
-                if (url != null && url.startsWith(PLACEHOLDER_URL)) {
-                    placeholderReady = true
-                    applyPendingPlaceholder()
-                }
-            }
-
-            override fun onReceivedError(
-                view: WebView,
-                request: WebResourceRequest,
-                error: WebResourceError?,
-            ) {
-                if (!request.isForMainFrame) return
-                loadedLoopback = false
-                boundPort = -1
-                showPlaceholder(getString(R.string.runtime_error), null)
-                btnRetry.visibility = View.VISIBLE
-            }
-        }
+        onBackPressedDispatcher.addCallback(this, overlayBack)
+        configureQuestWebView(webView, ::completeBridge, mainPanel = true)
 
         ContextCompat.registerReceiver(
             this,
@@ -253,6 +173,12 @@ class MainActivity : AppCompatActivity() {
                 "window.__grokQuestPttPaused && window.__grokQuestPttPaused()",
                 null,
             )
+            if (overlaySidechat.isOpen()) {
+                overlaySidechat.webView.evaluateJavascript(
+                    "window.__grokQuestPttPaused && window.__grokQuestPttPaused()",
+                    null,
+                )
+            }
         }
         super.onStop()
     }
@@ -265,6 +191,7 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
         }
         ptt.stop()
+        overlaySidechat.destroy()
         fileChooser.cancelPending()
         io.shutdownNow()
         super.onDestroy()
@@ -563,18 +490,168 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun completeBridge(id: String, err: String?, value: Any?) {
+        completeOn(webView, id, err, value)
+    }
+
+    private fun overlayComplete(id: String, err: String?, value: Any?) {
+        completeOn(overlaySidechat.webView, id, err, value)
+    }
+
+    private fun completeOn(target: WebView, id: String, err: String?, value: Any?) {
         val errJs = if (err == null) "null" else JSONObject.quote(err)
         val valueJs = when (value) {
             null -> "null"
             is String -> JSONObject.quote(value)
             is Number, is Boolean -> value.toString()
+            is JSONObject -> value.toString()
             else -> JSONObject.wrap(value)?.toString() ?: "null"
         }
         val js = "grokDesktop.__resolve(" + JSONObject.quote(id) + ", " + errJs + ", " + valueJs + ")"
         handler.post {
             if (uiDead || isDestroyed || isFinishing) return@post
-            webView.evaluateJavascript(js, null)
+            try {
+                target.evaluateJavascript(js, null)
+            } catch (_: Exception) {
+            }
         }
+    }
+
+    private fun configureQuestWebView(
+        target: WebView,
+        complete: (String, String?, Any?) -> Unit,
+        mainPanel: Boolean,
+    ) {
+        val settings = target.settings
+        settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true
+        settings.mediaPlaybackRequiresUserGesture = false
+        settings.allowFileAccess = false
+        settings.setSupportMultipleWindows(false)
+        target.setBackgroundColor(ContextCompat.getColor(this, R.color.grok_bg))
+        target.addJavascriptInterface(
+            GrokJsBridge(
+                complete,
+                ::openAuthTab,
+                ::copyTextToClipboard,
+                ::openFolderPicker,
+                ::shareFileFromBridge,
+                ::startPttFromBridge,
+                ::stopPttFromBridge,
+                ::openSidechatFromBridge,
+                ::getSidechatInitFromBridge,
+            ),
+            "GrokAndroid",
+        )
+        target.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                val msg = consoleMessage ?: return true
+                Log.i(TAG_WEB, "${msg.message()} -- ${msg.sourceId()}:${msg.lineNumber()}")
+                return true
+            }
+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?,
+            ): Boolean {
+                if (uiDead || isDestroyed || isFinishing) {
+                    filePathCallback?.onReceiveValue(null)
+                    return true
+                }
+                return fileChooser.onShowFileChooser(filePathCallback, fileChooserParams)
+            }
+
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                if (request == null) return
+                val origin = request.origin
+                val resources = request.resources ?: emptyArray()
+                val loopback = origin != null && isAllowedPanelUrl(origin)
+                val micOk = hasMicPermission()
+                val wantsMic = resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                if (loopback && micOk && wantsMic) {
+                    request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+                } else {
+                    request.deny()
+                }
+            }
+        }
+        target.setDownloadListener { url, _, contentDisposition, mimeType, _ ->
+            onWebViewDownload(url, contentDisposition, mimeType)
+        }
+        target.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val uri = request.url
+                if (isAllowedPanelUrl(uri)) return false
+                val href = uri.toString()
+                if (AuthTabLauncher.isSafeExternalUrl(href)) {
+                    AuthTabLauncher.open(this@MainActivity, href)
+                    return true
+                }
+                return true
+            }
+
+            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                if (url != null && isLoopbackHttp(url)) {
+                    view.evaluateJavascript(grokPreloadJs(), null)
+                }
+            }
+
+            override fun onPageFinished(view: WebView, url: String?) {
+                if (mainPanel && url != null && url.startsWith(PLACEHOLDER_URL)) {
+                    placeholderReady = true
+                    applyPendingPlaceholder()
+                }
+            }
+
+            override fun onReceivedError(
+                view: WebView,
+                request: WebResourceRequest,
+                error: WebResourceError?,
+            ) {
+                if (!mainPanel || !request.isForMainFrame) return
+                loadedLoopback = false
+                boundPort = -1
+                showPlaceholder(getString(R.string.runtime_error), null)
+                btnRetry.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun openSidechatFromBridge(id: String, argsJson: String) {
+        val payload = try {
+            JSONObject(argsJson)
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        handler.post {
+            if (uiDead || isDestroyed || isFinishing) {
+                completeBridge(id, "activity gone", false)
+                return@post
+            }
+            if (boundPort <= 0) {
+                completeBridge(id, "runtime not ready", false)
+                return@post
+            }
+            val nonce = overlaySidechat.putInit(payload)
+            val url = "http://127.0.0.1:$boundPort/?side=$nonce"
+            overlaySidechat.showUrl(url) { wv ->
+                configureQuestWebView(wv, ::overlayComplete, mainPanel = false)
+            }
+            overlayBack.isEnabled = true
+            val ok = JSONObject().put("ok", true)
+            completeBridge(id, null, ok)
+            overlayComplete(id, null, ok)
+        }
+    }
+
+    private fun getSidechatInitFromBridge(id: String, argsJson: String) {
+        val nonce = try {
+            JSONObject(argsJson).optString("nonce", "")
+        } catch (_: Exception) {
+            ""
+        }
+        val payload = overlaySidechat.takeInit(nonce)
+        overlayComplete(id, null, payload)
     }
 
     private fun readPort(paths: RuntimePaths): Int {

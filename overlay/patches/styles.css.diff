@@ -1,0 +1,22 @@
+diff --git a/renderer/styles.css b/renderer/styles.css
+--- a/renderer/styles.css
++++ b/renderer/styles.css
+@@ -3410,3 +3410,18 @@
+ .msg .md-table tbody tr:nth-child(even) td {
+   background: var(--tool-bg);
+ }
++
++.voice-command-chip {
++  margin: 0 12px 6px;
++  padding: 6px 12px;
++  border-radius: 999px;
++  font-size: 13px;
++  line-height: 1.3;
++  background: var(--accent-soft);
++  color: var(--text);
++  align-self: flex-start;
++}
++
++.voice-command-chip.hidden {
++  display: none;
++}

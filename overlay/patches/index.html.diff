@@ -11,3 +11,10 @@ index 8f22f81..f15b396 100644
          </div>
          <button type="button" id="btn-update" class="btn-update hidden">Update available</button>
        </div>
+@@ -195,5 +195,6 @@
+           aria-label="Commands"
+           aria-hidden="true"
+         ></div>
++        <div id="voice-command-chip" class="voice-command-chip hidden" aria-live="polite"></div>
+         <div class="composer-box">
+           <button type="button" id="btn-attach" class="btn-attach" title="Add image" aria-label="Add image">

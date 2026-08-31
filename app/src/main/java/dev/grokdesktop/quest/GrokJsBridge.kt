@@ -11,6 +11,8 @@ class GrokJsBridge(
     private val shareFilePayload: (id: String, argsJson: String) -> Unit,
     private val startPttPayload: (id: String, argsJson: String) -> Unit,
     private val stopPttPayload: (id: String) -> Unit,
+    private val openSidechatPayload: (id: String, argsJson: String) -> Unit,
+    private val getSidechatInitPayload: (id: String, argsJson: String) -> Unit,
 ) {
     @JavascriptInterface
     fun pickFolder(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
@@ -63,13 +65,13 @@ class GrokJsBridge(
     }
 
     @JavascriptInterface
-    fun openSidechat(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
-        complete(id, "not implemented", null)
+    fun openSidechat(id: String, argsJson: String) {
+        openSidechatPayload(id, argsJson)
     }
 
     @JavascriptInterface
-    fun getSidechatInit(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
-        complete(id, "not implemented", null)
+    fun getSidechatInit(id: String, argsJson: String) {
+        getSidechatInitPayload(id, argsJson)
     }
 
     @JavascriptInterface
