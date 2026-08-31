@@ -20,6 +20,7 @@ class PttAudioRecord {
         const val SAMPLE_RATE = 16000
         const val FRAME_MS = 100
         const val FRAME_BYTES = SAMPLE_RATE / (1000 / FRAME_MS) * 2
+        const val SILENCE_AVG = 280
         private const val TAG = "GrokPtt"
         private val SESSION_ID = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
@@ -133,8 +134,23 @@ class PttAudioRecord {
                 break
             }
             if (n <= 0) continue
+            if (isSilent(frame, n)) continue
             if (!postFrame(port, sessionId, frame, n)) break
         }
+    }
+
+    private fun isSilent(buf: ByteArray, length: Int): Boolean {
+        val even = length and 1.inv()
+        if (even < 2) return true
+        var sum = 0L
+        var i = 0
+        while (i < even) {
+            val sample = (buf[i].toInt() and 0xff) or (buf[i + 1].toInt() shl 8)
+            val signed = sample.toShort().toInt()
+            sum += if (signed < 0) -signed.toLong() else signed.toLong()
+            i += 2
+        }
+        return sum / (even / 2) < SILENCE_AVG
     }
 
     private fun postFrame(port: Int, sessionId: String, buf: ByteArray, length: Int): Boolean {
