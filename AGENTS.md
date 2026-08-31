@@ -73,7 +73,7 @@ Package: `dev.grokdesktop.quest`. `minSdk 32`, `targetSdk 34`.
 | **7** Image attach/media + export share-sheet | **Done** on `main`. `onShowFileChooser` (max 8) + `DownloadListener` / `/export` share sheet. |
 | **8** PTT voice (WebView mic + AudioRecord fallback) | **Done** on `main`. `onPermissionRequest` + `PttAudioRecord` 16 kHz PCM16 → `/api/stt/audio`. No auto-send. |
 | **9** Spoken slash commands + `/btw` overlay | **Done** on `main`. Match on PTT stop; `#voice-command-chip`; `OverlaySidechat` via `openSidechat`. |
-| 10 | Not started. Spec is `DESIGN.md` § PR Plan. |
+| **10** Theme, usage pie, APK update UX, disk warning, polish | **Done** on `main`. GitHub Releases sideload (no git pull); health `disk.*`; 48dp tap targets. |
 
 **Node artifact in this APK:** Termux **nodejs-lts 24.18.0** PIE + `/system/bin/linker64` (not JNI). NDK r26c Node v22.14.0 remains the documented primary recipe; host-tool flags blocked the link (see `SPIKE.md`). Node ≥ 21 is required (global `WebSocket`).
 

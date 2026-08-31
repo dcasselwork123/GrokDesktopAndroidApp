@@ -2,7 +2,72 @@ diff --git a/server/httpApi.js b/server/httpApi.js
 index ae86aec..8d9491e 100644
 --- a/server/httpApi.js
 +++ b/server/httpApi.js
-@@ -953,7 +953,9 @@ async function createServer({
+@@ -89,4 +89,49 @@ const MIME = {
+   ".webmanifest": "application/manifest+json",
+ };
+ 
++function questDirBytes(root) {
++  let total = 0;
++  let n = 0;
++  function walk(dir) {
++    if (total >= 8 * 1024 * 1024 * 1024 || n > 20000) return;
++    let ents;
++    try {
++      ents = fs.readdirSync(dir, { withFileTypes: true });
++    } catch {
++      return;
++    }
++    for (const ent of ents) {
++      if (total >= 8 * 1024 * 1024 * 1024 || n > 20000) return;
++      n += 1;
++      const p = path.join(dir, ent.name);
++      try {
++        if (ent.isDirectory()) walk(p);
++        else if (ent.isFile()) total += fs.statSync(p).size;
++      } catch {
++        /* skip */
++      }
++    }
++  }
++  if (root) walk(root);
++  return total;
++}
++
++function questDiskInfo() {
++  if (!process.env.GROK_QUEST_WORKSPACE) return null;
++  const disk = { freeBytes: null, grokHomeBytes: null };
++  try {
++    const st = fs.statfsSync(process.env.HOME || process.cwd());
++    disk.freeBytes = Number(st.bavail) * Number(st.bsize);
++  } catch {
++    /* missing statfs */
++  }
++  try {
++    const home = process.env.GROK_HOME || path.join(process.env.HOME || "", ".grok");
++    disk.grokHomeBytes = questDirBytes(home);
++  } catch {
++    /* skip */
++  }
++  return disk;
++}
++
+ function sendJson(res, status, body, extraHeaders = {}) {
+@@ -835,13 +876,14 @@ async function createServer({
+       if (pathname === "/api/health" && req.method === "GET") {
+         sendJson(
+           res,
+           200,
+           {
+             ok: true,
+             ...getStatus(),
+             remote: toPublicRemoteInfo(currentRemoteInfo()),
++            ...(questDiskInfo() ? { disk: questDiskInfo() } : {}),
+           },
+           extraHeaders
+         );
+         return;
+       }
+@@ -953,7 +997,9 @@ async function createServer({
        }
  
        if (pathname === "/api/remote" && req.method === "GET") {

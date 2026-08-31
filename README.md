@@ -62,4 +62,6 @@ Dictation uses the existing `#btn-mic` (click to start/stop; does not auto-send)
 
 Spoken commands (`new chat`, `export chat`, `imagine …`, `stop grok`, …) match only when the mic stops. `/btw` opens an in-panel side-chat WebView, not a second window.
 
+Appearance (light/dark/system) is in the account bubble. Weekly usage is the pie in the toolbar. If GitHub Releases has a newer tag than this APK, **Update available** offers a sideload URL — the app does not `git pull`. A sidebar warning appears if free space is under 2 GB or Grok data is over 4 GB.
+
 Results: `$HOME/.grok-desktop/spike-results.json` with `$HOME` = `filesDir/home`. FGS doff: start the panel, take the headset off ≥ 60s, confirm the Node pid in `node.pid` is still alive. See `SPIKE.md`.

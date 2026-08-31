@@ -9,12 +9,33 @@ diff --git a/renderer/app.js b/renderer/app.js
  
    function isLoopbackPage() {
      const host = String(location.hostname || "").toLowerCase();
-@@ -327,6 +328,84 @@
+@@ -267,3 +267,3 @@
+     }
+-    if (isPhoneUi() || (!isElectron() && !isLoopbackPage())) return;
++    if (isQuest() || isPhoneUi() || (!isElectron() && !isLoopbackPage())) return;
+     api("/api/remote/settings", {
+@@ -327,6 +328,100 @@
      return !!(window.grokDesktop && window.grokDesktop.isElectron);
    }
  
 +  function isQuest() {
 +    return !!(window.grokDesktop && window.grokDesktop.isQuest);
++  }
++
++  function applyQuestDiskWarning(health) {
++    const el = document.getElementById("disk-warning");
++    if (!el || !isQuest()) return;
++    const disk = health && health.disk;
++    const free = disk ? Number(disk.freeBytes) : NaN;
++    const used = disk ? Number(disk.grokHomeBytes) : NaN;
++    let msg = "";
++    if (Number.isFinite(free) && free < 2 * 1024 * 1024 * 1024) {
++      msg = "Storage is low (under 2 GB free).";
++    } else if (Number.isFinite(used) && used > 4 * 1024 * 1024 * 1024) {
++      msg = "Grok data is over 4 GB. Archive or delete old chats.";
++    }
++    el.textContent = msg;
++    el.classList.toggle("hidden", !msg);
 +  }
 +
 +  const QUEST_TURN_DIED = "Turn died; session is on disk.";
@@ -794,3 +815,60 @@ diff --git a/renderer/app.js b/renderer/app.js
            {
              label: "Recheck",
              primary: false,
+@@ -7415,2 +7600,3 @@
+       const health = await api("/api/health");
++      applyQuestDiskWarning(health);
+       if (!getCwd() && health.cwd) setCwd(health.cwd);
+@@ -7486,3 +7672,8 @@
+       state.usageTimer = setInterval(() => {
+         if (state.setupReady) refreshUsage();
++        if (isQuest()) {
++          void api("/api/health")
++            .then(applyQuestDiskWarning)
++            .catch(() => {});
++        }
+       }, 90000);
+@@ -7503,2 +7694,6 @@
+     if (!els.btnUpdate) return;
++    if (isQuest() && (!info || info.disabled || info.supported === false) && !(info && info.available)) {
++      els.btnUpdate.classList.add("hidden");
++      return;
++    }
+     const show = !!(info && info.available && !info.applying);
+@@ -7602,3 +7797,19 @@
+         info.behind > 1 ? `Update available (${info.behind} commits)` : "Update available";
+     }
++    if (isQuest()) {
++      if (els.updateTitle) els.updateTitle.textContent = "Update available";
++      if (els.updateCommit) {
++        els.updateCommit.textContent = updateSummaryText(info) || (info.latestTag || "GitHub Releases");
++      }
++      if (els.updateNote) {
++        els.updateNote.textContent =
++          "Sideload the new APK from GitHub Releases. This app cannot git pull.";
++      }
++      if (els.updateConfirm) {
++        els.updateConfirm.disabled = !(info.apkUrl || info.htmlUrl);
++        els.updateConfirm.textContent = "Open release";
++      }
++      if (els.updateCancel) els.updateCancel.disabled = false;
++      return;
++    }
+     if (isPhoneUi()) {
+@@ -7633,2 +7843,16 @@
+     if (state.updateApplying) return;
++    if (isQuest()) {
++      const info = state.appUpdate || {};
++      const url = info.apkUrl || info.htmlUrl || "";
++      setUpdateProgress("Sideload the APK from GitHub Releases. This app cannot git pull.");
++      if (url && window.grokDesktop && typeof window.grokDesktop.openExternal === "function") {
++        void window.grokDesktop.openExternal(url);
++      }
++      try {
++        await api("/api/update", { method: "POST", body: "{}" });
++      } catch {
++        /* SIDELOAD_REQUIRED */
++      }
++      return;
++    }
+     if (isPhoneUi()) {

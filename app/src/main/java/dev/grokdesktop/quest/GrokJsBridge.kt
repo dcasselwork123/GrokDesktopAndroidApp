@@ -13,6 +13,7 @@ class GrokJsBridge(
     private val stopPttPayload: (id: String) -> Unit,
     private val openSidechatPayload: (id: String, argsJson: String) -> Unit,
     private val getSidechatInitPayload: (id: String, argsJson: String) -> Unit,
+    private val applyThemePref: (pref: String) -> Unit,
 ) {
     @JavascriptInterface
     fun pickFolder(id: String, @Suppress("UNUSED_PARAMETER") argsJson: String) {
@@ -61,6 +62,7 @@ class GrokJsBridge(
         } catch (_: Exception) {
             ""
         }
+        applyThemePref(pref)
         complete(id, null, pref)
     }
 

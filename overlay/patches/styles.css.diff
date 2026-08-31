@@ -1,7 +1,7 @@
 diff --git a/renderer/styles.css b/renderer/styles.css
 --- a/renderer/styles.css
 +++ b/renderer/styles.css
-@@ -3410,3 +3410,18 @@
+@@ -3410,3 +3410,48 @@
  .msg .md-table tbody tr:nth-child(even) td {
    background: var(--tool-bg);
  }
@@ -19,4 +19,34 @@ diff --git a/renderer/styles.css b/renderer/styles.css
 +
 +.voice-command-chip.hidden {
 +  display: none;
++}
++
++.disk-warning {
++  margin: 8px 10px 0;
++  padding: 8px 10px;
++  border-radius: 8px;
++  font-size: 12.5px;
++  line-height: 1.35;
++  color: var(--warn);
++  background: var(--warn-bg);
++  border: 1px solid var(--warn-border);
++}
++
++.disk-warning.hidden {
++  display: none;
++}
++
++.icon-btn,
++.btn-attach,
++.btn-mic,
++.btn-send,
++.cwd-browse-btn,
++.model-select-btn,
++.account-bubble,
++.usage-btn,
++.theme-toggle-btn,
++.account-pop-item,
++.btn-update {
++  min-width: 48px;
++  min-height: 48px;
 +}

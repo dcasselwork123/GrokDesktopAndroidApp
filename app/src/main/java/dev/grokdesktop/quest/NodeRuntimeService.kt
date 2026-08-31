@@ -153,6 +153,8 @@ class NodeRuntimeService : Service() {
                 put("GROK_HOME", paths.grokHome.absolutePath)
                 put("GROK_BIN", paths.grok.absolutePath)
                 put("GROK_QUEST_WORKSPACE", paths.workspace.absolutePath)
+                put("GROK_UPDATE_REPO", BuildConfig.UPDATE_REPO)
+                put("GROK_APP_VERSION", BuildConfig.VERSION_NAME)
                 put("GROK_DESKTOP_HOST", "127.0.0.1")
                 put("GROK_DESKTOP_PORT", "3847")
                 put("GROK_DESKTOP_ALLOW_LAN", "0")

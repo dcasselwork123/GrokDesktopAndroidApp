@@ -33,6 +33,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -317,6 +318,18 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    private fun applyThemePrefFromBridge(pref: String) {
+        val mode = when (pref) {
+            "light" -> AppCompatDelegate.MODE_NIGHT_NO
+            "dark" -> AppCompatDelegate.MODE_NIGHT_YES
+            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        handler.post {
+            if (uiDead || isDestroyed || isFinishing) return@post
+            AppCompatDelegate.setDefaultNightMode(mode)
+        }
+    }
+
     private fun copyTextToClipboard(text: String): Boolean {
         if (text.isBlank()) return false
         val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
@@ -539,6 +552,7 @@ class MainActivity : AppCompatActivity() {
                 ::stopPttFromBridge,
                 ::openSidechatFromBridge,
                 ::getSidechatInitFromBridge,
+                ::applyThemePrefFromBridge,
             ),
             "GrokAndroid",
         )

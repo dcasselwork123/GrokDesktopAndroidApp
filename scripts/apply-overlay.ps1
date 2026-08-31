@@ -11,6 +11,7 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 $AssetsRoot = Join-Path $RepoRoot "app\src\main\assets\grok-desktop"
 $PatchDir = Join-Path $RepoRoot "overlay\patches"
 $QuestEntrySrc = Join-Path $RepoRoot "overlay\server\questEntry.js"
+$AppUpdateSrc = Join-Path $RepoRoot "overlay\server\appUpdate.js"
 
 $httpApi = Join-Path $AssetsRoot "server\httpApi.js"
 if (-not (Test-Path -LiteralPath $httpApi)) {
@@ -45,3 +46,7 @@ $questDestDir = Join-Path $AssetsRoot "server"
 New-Item -ItemType Directory -Force -Path $questDestDir | Out-Null
 Copy-Item -LiteralPath $QuestEntrySrc -Destination (Join-Path $questDestDir "questEntry.js") -Force
 Write-Host "==> copied overlay/server/questEntry.js"
+if (Test-Path -LiteralPath $AppUpdateSrc) {
+    Copy-Item -LiteralPath $AppUpdateSrc -Destination (Join-Path $questDestDir "appUpdate.js") -Force
+    Write-Host "==> copied overlay/server/appUpdate.js"
+}

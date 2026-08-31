@@ -1012,7 +1012,7 @@ Spike-first. DNS/TLS/SHELL are not deferred until chat.
 - **Files:** overlay grammar table + `#voice-command-chip`, `OverlaySidechat.kt` via `openSidechat`
 - **Description:** Match only on PTT stop. Explicit patterns. Side chat overlay WebView.
 
-### PR 10 — Theme, usage pie, APK update UX, disk warning, polish
+### PR 10 — Theme, usage pie, APK update UX, disk warning, polish **(implemented)**
 
 - **Depends on:** PR 3+
 - **Files:** overlay `appUpdate.js` (Releases / `SIDELOAD_REQUIRED`); `overlay/patches/httpApi.js.diff` hunk for `GET /api/health` `disk.freeBytes` / `grokHomeBytes`; CSS 48dp

@@ -2,7 +2,7 @@ diff --git a/renderer/index.html b/renderer/index.html
 index 8f22f81..f15b396 100644
 --- a/renderer/index.html
 +++ b/renderer/index.html
-@@ -141,7 +141,7 @@
+@@ -141,7 +141,8 @@
              <span class="dot" id="status-dot"></span>
              <span id="status-text">Connecting…</span>
            </div>
@@ -10,6 +10,7 @@ index 8f22f81..f15b396 100644
 +          <button id="btn-remote-info" class="icon-btn hidden" title="Remote access (iPhone)" hidden>📱</button>
          </div>
          <button type="button" id="btn-update" class="btn-update hidden">Update available</button>
++        <p id="disk-warning" class="disk-warning hidden" role="status"></p>
        </div>
 @@ -195,5 +195,6 @@
            aria-label="Commands"
